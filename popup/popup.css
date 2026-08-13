@@ -1,0 +1,91 @@
+:root {
+  --bg: #101014;
+  --card: #18181f;
+  --card-2: #1f1f29;
+  --border: #2a2a36;
+  --text: #e8e8ef;
+  --dim: #8b8b9a;
+  --accent: #7c5cff;
+  --accent-2: #21c4ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 300px;
+  margin: 0;
+  padding: 0 14px 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.hidden { display: none !important; }
+.dim { color: var(--dim); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.text-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.text-btn:hover { color: var(--text); }
+
+.warning {
+  background: rgba(255, 190, 90, 0.12);
+  color: #ffbe5a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.warning a { color: inherit; font-weight: 600; }
+
+.dropzone {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--dim);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.dropzone:hover, .dropzone.drag {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.dropzone p { margin: 8px 0 0; }
+
+.secondary {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.secondary:hover { border-color: var(--accent); }
+
+.hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  text-align: center;
+}

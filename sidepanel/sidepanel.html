@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prompt Lens</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="22" height="22" />
+      <span>Prompt Lens</span>
+    </div>
+    <button id="btn-settings" class="icon-btn" title="设置">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <main id="main">
+    <section id="empty-state" class="empty hidden">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+      </div>
+      <p>把鼠标悬停在网页图片上，<br />点击悬浮球开始反推提示词。</p>
+      <p class="dim">也可以在插件弹窗里粘贴 / 上传图片。</p>
+    </section>
+
+    <section id="task-view" class="hidden">
+      <div class="card">
+        <div class="source-row">
+          <img id="source-img" alt="参考图" />
+          <div class="source-meta">
+            <div id="task-status" class="status"></div>
+            <a id="source-link" href="#" target="_blank" rel="noreferrer" class="dim link hidden">来源页面</a>
+          </div>
+        </div>
+        <div id="task-error" class="error hidden"></div>
+      </div>
+
+      <div id="result-block" class="hidden">
+        <div class="card">
+          <div class="card-head">
+            <h2>提示词</h2>
+            <div class="head-actions">
+              <button id="btn-copy-en" class="chip-btn">复制英文</button>
+              <button id="btn-copy-zh" class="chip-btn">复制中文</button>
+            </div>
+          </div>
+          <textarea id="prompt-en" rows="7" spellcheck="false"></textarea>
+          <details class="zh-details">
+            <summary>中文对照</summary>
+            <p id="prompt-zh" class="zh-text"></p>
+          </details>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>画面解构</h2></div>
+          <div id="tags"></div>
+          <div id="palette" class="palette"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>生成新图</h2></div>
+          <div class="gen-controls">
+            <label>画幅
+              <select id="gen-aspect">
+                <option value="1:1">1:1</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="3:2">3:2</option>
+                <option value="2:3">2:3</option>
+                <option value="21:9">21:9</option>
+              </select>
+            </label>
+            <label>分辨率
+              <select id="gen-size">
+                <option value="512">512</option>
+                <option value="1K">1K</option>
+                <option value="2K">2K</option>
+                <option value="4K">4K</option>
+              </select>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="gen-useref" />带参考图
+            </label>
+          </div>
+          <button id="btn-generate" class="primary">生成图片</button>
+          <div id="generations"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="history-section" class="hidden">
+      <div class="card-head history-head">
+        <h2>历史记录</h2>
+        <button id="btn-clear-history" class="chip-btn danger">清空</button>
+      </div>
+      <div id="history-list"></div>
+    </section>
+  </main>
+
+  <script src="sidepanel.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prompt Lens 设置</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <header class="brand">
+      <img src="../icons/icon48.png" alt="" width="28" height="28" />
+      <h1>Prompt Lens 设置</h1>
+    </header>
+
+    <section class="card">
+      <h2>API</h2>
+      <label>
+        Gemini API Key
+        <div class="key-row">
+          <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
+          <button id="btn-test" class="chip-btn">测试</button>
+        </div>
+        <span class="hint">在 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> 免费创建。Key 只保存在浏览器本地，直接请求 Google API。</span>
+        <span id="test-result" class="hint"></span>
+      </label>
+      <div class="row">
+        <label>
+          反推模型
+          <input type="text" id="analysisModel" />
+          <span class="hint">用于分析图片、反推提示词</span>
+        </label>
+        <label>
+          生图模型
+          <input type="text" id="imageModel" />
+          <span class="hint">Nano Banana 系列图像模型</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>生成默认值</h2>
+      <div class="row">
+        <label>
+          默认画幅
+          <select id="aspectRatio">
+            <option value="1:1">1:1</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="3:2">3:2</option>
+            <option value="2:3">2:3</option>
+            <option value="21:9">21:9</option>
+          </select>
+        </label>
+        <label>
+          默认分辨率
+          <select id="imageSize">
+            <option value="512">512</option>
+            <option value="1K">1K</option>
+            <option value="2K">2K</option>
+            <option value="4K">4K</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>悬浮球</h2>
+      <label class="check">
+        <input type="checkbox" id="ballEnabled" />
+        在网页图片上显示悬浮球
+      </label>
+      <label>
+        图片最小尺寸（px）
+        <input type="number" id="minImageSize" min="40" max="600" step="10" />
+        <span class="hint">宽高都超过这个值的图片才会显示悬浮球</span>
+      </label>
+    </section>
+
+    <div class="actions">
+      <button id="btn-save" class="primary">保存设置</button>
+      <span id="save-result" class="hint"></span>
+    </div>
+  </main>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

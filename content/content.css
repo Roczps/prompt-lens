@@ -1,0 +1,50 @@
+#prompt-lens-ball {
+  position: fixed;
+  z-index: 2147483646;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, #7c5cff 0%, #21c4ff 100%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.7);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+#prompt-lens-ball.prompt-lens-visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+#prompt-lens-ball:hover {
+  transform: scale(1.1);
+}
+
+.prompt-lens-toast {
+  position: fixed;
+  z-index: 2147483647;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(20, 20, 28, 0.92);
+  color: #fff;
+  font: 13px/1.4 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  padding: 9px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.prompt-lens-toast.prompt-lens-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
