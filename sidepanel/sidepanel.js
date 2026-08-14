@@ -31,9 +31,12 @@ const STATUS_TEXT = {
 };
 
 let state = { tasks: {}, activeTaskId: null };
+let chars = {};
 let renderedTaskId = null;
 let renderedStamp = '';
 let renderedResultFor = null;
+
+const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '' };
 
 async function loadState() {
   const { tasks = {}, activeTaskId = null } = await chrome.storage.local.get(['tasks', 'activeTaskId']);
@@ -184,7 +187,8 @@ function renderGenerations(task) {
     const meta = document.createElement('div');
     meta.className = 'gen-meta';
     const statusText = gen.status === 'running' ? '生成中…' : gen.status === 'error' ? '失败' : '完成';
-    meta.innerHTML = `<span>${gen.aspectRatio} · ${gen.imageSize}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
+    const modeText = [REF_MODE_LABELS[gen.refMode] || '', gen.characterName || ''].filter(Boolean).join(' · ');
+    meta.innerHTML = `<span>${gen.aspectRatio} · ${gen.imageSize}${modeText ? ' · ' + modeText : ''}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
     item.appendChild(meta);
 
     if (gen.status === 'error') {
@@ -271,6 +275,87 @@ function renderHistory() {
   }
 }
 
+async function loadChars() {
+  const { characters = {} } = await chrome.storage.local.get('characters');
+  chars = characters;
+}
+
+function renderChars() {
+  const arr = Object.values(chars).sort((a, b) => a.createdAt - b.createdAt);
+  $('chars-empty').classList.toggle('hidden', !!arr.length);
+
+  const list = $('char-list');
+  list.innerHTML = '';
+  for (const c of arr) {
+    const item = document.createElement('div');
+    item.className = 'char-item';
+
+    const img = document.createElement('img');
+    img.src = c.dataUrl;
+    img.title = c.desc || '';
+
+    const info = document.createElement('div');
+    info.className = 'char-info';
+    const name = document.createElement('span');
+    name.className = 'char-name';
+    name.textContent = c.name;
+    name.contentEditable = 'plaintext-only';
+    name.spellcheck = false;
+    name.title = '点击修改名称';
+    name.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        name.blur();
+      }
+    });
+    name.addEventListener('blur', async () => {
+      const v = name.textContent.trim();
+      if (v && v !== c.name) {
+        chars[c.id].name = v;
+        await chrome.storage.local.set({ characters: chars });
+      } else {
+        name.textContent = c.name;
+      }
+    });
+    const hint = document.createElement('span');
+    hint.className = 'char-hint';
+    hint.textContent = c.status === 'analyzing' ? '识别外貌中…' : c.desc ? c.desc : '';
+    info.append(name, hint);
+
+    const del = document.createElement('button');
+    del.className = 'h-del';
+    del.textContent = '✕';
+    del.title = '删除角色卡';
+    del.addEventListener('click', async () => {
+      if (!confirm(`删除角色卡「${c.name}」？`)) return;
+      delete chars[c.id];
+      await chrome.storage.local.set({ characters: chars });
+    });
+
+    item.append(img, info, del);
+    list.appendChild(item);
+  }
+
+  const sel = $('gen-character');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">不替换</option>';
+  for (const c of arr) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
+function createCharacter(dataUrl) {
+  const count = Object.keys(chars).length + 1;
+  chrome.runtime.sendMessage({
+    type: 'SAVE_CHARACTER',
+    payload: { dataUrl, name: `角色 ${count}` }
+  });
+}
+
 async function init() {
   const settings = await getSettings();
   $('gen-aspect').value = settings.aspectRatio;
@@ -308,7 +393,8 @@ async function init() {
           prompt,
           aspectRatio: $('gen-aspect').value,
           imageSize: $('gen-size').value,
-          useRef: $('gen-useref').checked
+          refMode: $('gen-refmode').value,
+          characterId: $('gen-character').value
         }
       });
       if (res && !res.ok) {
@@ -325,16 +411,36 @@ async function init() {
     await chrome.storage.local.set({ tasks: {}, activeTaskId: null });
   });
 
+  $('btn-char-from-task').addEventListener('click', () => {
+    const task = activeTask();
+    if (!task?.source?.dataUrl) return;
+    createCharacter(task.source.dataUrl);
+  });
+  $('btn-char-upload').addEventListener('click', () => $('char-file').click());
+  $('char-file').addEventListener('change', () => {
+    const file = $('char-file').files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => createCharacter(reader.result);
+    reader.readAsDataURL(file);
+    $('char-file').value = '';
+  });
+
   chrome.storage.onChanged.addListener(async (changes, area) => {
     if (area !== 'local') return;
     if (changes.tasks || changes.activeTaskId) {
       await loadState();
       render();
     }
+    if (changes.characters) {
+      chars = changes.characters.newValue || {};
+      renderChars();
+    }
   });
 
-  await loadState();
+  await Promise.all([loadState(), loadChars()]);
   render();
+  renderChars();
 }
 
 init();

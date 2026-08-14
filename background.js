@@ -1,5 +1,5 @@
 import { getSettings } from './lib/settings.js';
-import { reversePrompt, generateImage } from './lib/gemini.js';
+import { reversePrompt, generateImage, describeCharacter } from './lib/gemini.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
 
 const MAX_TASKS = 50;
@@ -61,7 +61,7 @@ async function startAnalysis(source) {
   await saveTask(task);
 }
 
-async function startGeneration({ taskId, prompt, aspectRatio, imageSize, useRef }) {
+async function startGeneration({ taskId, prompt, aspectRatio, imageSize, refMode = 'none', characterId = '' }) {
   const tasks = await getTasks();
   const task = tasks[taskId];
   if (!task) throw new Error('任务不存在');
@@ -73,17 +73,43 @@ async function startGeneration({ taskId, prompt, aspectRatio, imageSize, useRef 
     prompt,
     aspectRatio,
     imageSize,
+    refMode,
+    characterName: '',
     images: [],
     error: null
   };
+
+  let charPart = null;
+  let charDesc = '';
+  if (characterId) {
+    const { characters = {} } = await chrome.storage.local.get('characters');
+    const char = characters[characterId];
+    if (char) {
+      charPart = dataUrlToInlinePart(char.dataUrl);
+      charDesc = char.desc || '';
+      gen.characterName = char.name || '';
+    }
+  }
+
   task.generations.unshift(gen);
   await saveTask(task);
 
   try {
     const settings = await getSettings();
     if (!settings.apiKey) throw new Error('未配置 API Key');
-    const refPart = useRef && task.source?.dataUrl ? dataUrlToInlinePart(task.source.dataUrl) : null;
-    const { images, text } = await generateImage({ prompt, aspectRatio, imageSize, refPart }, settings);
+    const sourcePart = task.source?.dataUrl ? dataUrlToInlinePart(task.source.dataUrl) : null;
+    const { images, text } = await generateImage(
+      {
+        prompt,
+        aspectRatio,
+        imageSize,
+        poseRefPart: refMode === 'pose' ? sourcePart : null,
+        styleRefPart: refMode === 'style' ? sourcePart : null,
+        charPart,
+        charDesc
+      },
+      settings
+    );
     if (!images.length) {
       throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
     }
@@ -94,6 +120,37 @@ async function startGeneration({ taskId, prompt, aspectRatio, imageSize, useRef 
     gen.error = String(e?.message || e);
   }
   await saveTask(task);
+}
+
+async function saveCharacterRecord(char) {
+  const { characters = {} } = await chrome.storage.local.get('characters');
+  characters[char.id] = char;
+  await chrome.storage.local.set({ characters });
+}
+
+async function createCharacter({ dataUrl, name }) {
+  const { bytes, mime } = dataUrlToBytes(dataUrl);
+  const thumb = await makeThumbnail(bytes, mime, 1024);
+  const char = {
+    id: uid(),
+    createdAt: Date.now(),
+    name: name || '角色',
+    dataUrl: thumb.dataUrl,
+    desc: '',
+    status: 'analyzing'
+  };
+  await saveCharacterRecord(char);
+
+  try {
+    const settings = await getSettings();
+    if (settings.apiKey) {
+      char.desc = await describeCharacter({ base64: thumb.base64, mimeType: thumb.mimeType }, settings);
+    }
+  } catch (e) {
+    console.error('character description failed:', e);
+  }
+  char.status = 'done';
+  await saveCharacterRecord(char);
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -120,6 +177,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Run async; progress and errors are written to the gen record in
       // storage, which the side panel re-renders from.
       startGeneration(msg.payload).catch((e) => console.error('generation failed:', e));
+      sendResponse({ ok: true });
+      return false;
+    }
+    case 'SAVE_CHARACTER': {
+      createCharacter(msg.payload).catch((e) => console.error('save character failed:', e));
       sendResponse({ ok: true });
       return false;
     }

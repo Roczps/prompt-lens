@@ -86,14 +86,38 @@
                 <option value="4K">4K</option>
               </select>
             </label>
-            <label class="check">
-              <input type="checkbox" id="gen-useref" />带参考图
+          </div>
+          <div class="gen-controls">
+            <label>参考模式
+              <select id="gen-refmode">
+                <option value="pose">姿势复刻（锁定姿势与构图）</option>
+                <option value="style">风格参考</option>
+                <option value="none">无参考（纯提示词）</option>
+              </select>
+            </label>
+            <label>角色替换
+              <select id="gen-character">
+                <option value="">不替换</option>
+              </select>
             </label>
           </div>
           <button id="btn-generate" class="primary">生成图片</button>
           <div id="gen-error" class="error hidden"></div>
           <div id="generations"></div>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>角色卡</h2>
+          <div class="head-actions">
+            <button id="btn-char-from-task" class="chip-btn">存当前图人物</button>
+            <button id="btn-char-upload" class="chip-btn">上传</button>
+            <input type="file" id="char-file" accept="image/*" hidden />
+          </div>
+        </div>
+        <p id="chars-empty" class="dim chars-empty">还没有角色卡。保存一个角色后，生成时可以把画面人物替换成它。</p>
+        <div id="char-list" class="char-list"></div>
       </div>
     </section>
 
