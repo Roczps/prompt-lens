@@ -13,6 +13,7 @@ const AXIS_LABELS = {
 
 const ANALYSIS_LABELS = {
   subject: '主体',
+  pose: '姿势',
   environment: '环境',
   composition: '构图',
   lighting: '光线',
