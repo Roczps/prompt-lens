@@ -38,8 +38,39 @@
     </section>
 
     <section class="card">
+      <h2>GPT-Image 渠道（可选）</h2>
+      <label>
+        OpenAI API Key
+        <div class="key-row">
+          <input type="password" id="openaiApiKey" placeholder="sk-..." autocomplete="off" />
+          <button id="btn-test-openai" class="chip-btn">测试</button>
+        </div>
+        <span id="test-openai-result" class="hint"></span>
+      </label>
+      <div class="row">
+        <label>
+          接口地址（Base URL）
+          <input type="text" id="openaiBaseUrl" placeholder="https://api.openai.com/v1" />
+          <span class="hint">支持 OpenAI 兼容中转站，填到 /v1 为止</span>
+        </label>
+        <label>
+          生图模型
+          <input type="text" id="openaiImageModel" />
+          <span class="hint">默认 gpt-image-2</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>生成默认值</h2>
       <div class="row">
+        <label>
+          默认生图渠道
+          <select id="imageProvider">
+            <option value="gemini">Gemini</option>
+            <option value="openai">GPT-Image</option>
+          </select>
+        </label>
         <label>
           默认画幅
           <select id="aspectRatio">

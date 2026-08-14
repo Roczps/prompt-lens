@@ -37,6 +37,7 @@ let renderedStamp = '';
 let renderedResultFor = null;
 
 const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '' };
+const PROVIDER_LABELS = { gemini: 'Gemini', openai: 'GPT-Image' };
 
 async function loadState() {
   const { tasks = {}, activeTaskId = null } = await chrome.storage.local.get(['tasks', 'activeTaskId']);
@@ -187,7 +188,9 @@ function renderGenerations(task) {
     const meta = document.createElement('div');
     meta.className = 'gen-meta';
     const statusText = gen.status === 'running' ? '生成中…' : gen.status === 'error' ? '失败' : '完成';
-    const modeText = [REF_MODE_LABELS[gen.refMode] || '', gen.characterName || ''].filter(Boolean).join(' · ');
+    const modeText = [PROVIDER_LABELS[gen.provider] || '', REF_MODE_LABELS[gen.refMode] || '', gen.characterName || '']
+      .filter(Boolean)
+      .join(' · ');
     meta.innerHTML = `<span>${gen.aspectRatio} · ${gen.imageSize}${modeText ? ' · ' + modeText : ''}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
     item.appendChild(meta);
 
@@ -369,6 +372,7 @@ async function init() {
   const settings = await getSettings();
   $('gen-aspect').value = settings.aspectRatio;
   $('gen-size').value = settings.imageSize;
+  $('gen-provider').value = settings.imageProvider || 'gemini';
 
   $('btn-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
@@ -403,7 +407,8 @@ async function init() {
           aspectRatio: $('gen-aspect').value,
           imageSize: $('gen-size').value,
           refMode: $('gen-refmode').value,
-          characterId: $('gen-character').value
+          characterId: $('gen-character').value,
+          provider: $('gen-provider').value
         }
       });
       if (res && !res.ok) {

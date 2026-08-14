@@ -1,5 +1,6 @@
 import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter } from './lib/gemini.js';
+import { generateImageOpenAI } from './lib/openai.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
 
 const MAX_TASKS = 50;
@@ -61,10 +62,21 @@ async function startAnalysis(source) {
   await saveTask(task);
 }
 
-async function startGeneration({ taskId, prompt, aspectRatio, imageSize, refMode = 'none', characterId = '' }) {
+async function startGeneration({
+  taskId,
+  prompt,
+  aspectRatio,
+  imageSize,
+  refMode = 'none',
+  characterId = '',
+  provider = ''
+}) {
   const tasks = await getTasks();
   const task = tasks[taskId];
   if (!task) throw new Error('任务不存在');
+
+  const settings = await getSettings();
+  const useProvider = provider || settings.imageProvider || 'gemini';
 
   const gen = {
     id: uid(),
@@ -74,18 +86,19 @@ async function startGeneration({ taskId, prompt, aspectRatio, imageSize, refMode
     aspectRatio,
     imageSize,
     refMode,
+    provider: useProvider,
     characterName: '',
     images: [],
     error: null
   };
 
-  let charPart = null;
+  let charDataUrl = '';
   let charDesc = '';
   if (characterId) {
     const { characters = {} } = await chrome.storage.local.get('characters');
     const char = characters[characterId];
     if (char?.dataUrl) {
-      charPart = dataUrlToInlinePart(char.dataUrl);
+      charDataUrl = char.dataUrl;
       charDesc = char.desc || '';
       gen.characterName = char.name || '';
     }
@@ -95,21 +108,35 @@ async function startGeneration({ taskId, prompt, aspectRatio, imageSize, refMode
   await saveTask(task);
 
   try {
-    const settings = await getSettings();
-    if (!settings.apiKey) throw new Error('未配置 API Key');
-    const sourcePart = task.source?.dataUrl ? dataUrlToInlinePart(task.source.dataUrl) : null;
-    const { images, text } = await generateImage(
-      {
-        prompt,
-        aspectRatio,
-        imageSize,
-        poseRefPart: refMode === 'pose' ? sourcePart : null,
-        styleRefPart: refMode === 'style' ? sourcePart : null,
-        charPart,
-        charDesc
-      },
-      settings
-    );
+    const sourceDataUrl = task.source?.dataUrl || '';
+    const poseRefDataUrl = refMode === 'pose' ? sourceDataUrl : '';
+    const styleRefDataUrl = refMode === 'style' ? sourceDataUrl : '';
+
+    let result;
+    if (useProvider === 'openai') {
+      if (!settings.openaiApiKey) {
+        throw new Error('未配置 OpenAI API Key。请到设置页填写 GPT-Image 渠道的 Key。');
+      }
+      result = await generateImageOpenAI(
+        { prompt, aspectRatio, imageSize, poseRefDataUrl, styleRefDataUrl, charDataUrl, charDesc },
+        settings
+      );
+    } else {
+      if (!settings.apiKey) throw new Error('未配置 Gemini API Key');
+      result = await generateImage(
+        {
+          prompt,
+          aspectRatio,
+          imageSize,
+          poseRefPart: poseRefDataUrl ? dataUrlToInlinePart(poseRefDataUrl) : null,
+          styleRefPart: styleRefDataUrl ? dataUrlToInlinePart(styleRefDataUrl) : null,
+          charPart: charDataUrl ? dataUrlToInlinePart(charDataUrl) : null,
+          charDesc
+        },
+        settings
+      );
+    }
+    const { images, text } = result;
     if (!images.length) {
       throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
     }

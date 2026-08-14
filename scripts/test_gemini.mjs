@@ -77,4 +77,55 @@ globalThis.fetch = async () => ({
 const r = await reversePrompt({ base64: 'x', mimeType: 'image/jpeg' }, settings);
 console.log('--- reversePrompt keys:', Object.keys(r).join(','), '| pose:', r.analysis.pose);
 
+// 4. OpenAI channel
+const { generateImageOpenAI, openaiSize } = await import('../lib/openai.js');
+
+const sizeCases = [
+  ['1:1', '1K', '1024x1024'],
+  ['16:9', '2K', '2048x1152'],
+  ['9:16', '1K', '576x1024'],
+  ['1:1', '4K', '2880x2880'],
+  ['21:9', '4K', '3824x1632']
+];
+for (const [ar, tier, expected] of sizeCases) {
+  const got = openaiSize(ar, tier);
+  const [w, h] = got.split('x').map(Number);
+  const ok = w % 16 === 0 && h % 16 === 0 && w * h >= 655360 && w * h <= 8294400;
+  console.log(`--- openaiSize ${ar} ${tier} -> ${got} (expected ${expected}) valid:${ok}`);
+  if (!ok) throw new Error('invalid size ' + got);
+}
+
+const oaSettings = {
+  openaiApiKey: 'sk-test',
+  openaiBaseUrl: 'https://api.openai.com/v1/',
+  openaiImageModel: 'gpt-image-2'
+};
+const oaCalls = [];
+globalThis.fetch = async (url, opts) => {
+  oaCalls.push({ url, opts });
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] })
+  };
+};
+
+// text-only -> generations JSON
+oaCalls.length = 0;
+let oa = await generateImageOpenAI({ prompt: 'p', aspectRatio: '3:4', imageSize: '1K' }, oaSettings);
+let body = JSON.parse(oaCalls[0].opts.body);
+console.log('--- openai generations url:', oaCalls[0].url, '| size:', body.size, '| quality:', body.quality, '| images:', oa.images.length);
+
+// with refs -> edits multipart
+oaCalls.length = 0;
+const fakeDataUrl = 'data:image/jpeg;base64,/9j/AAAA';
+oa = await generateImageOpenAI(
+  { prompt: 'p', aspectRatio: '1:1', imageSize: '2K', poseRefDataUrl: fakeDataUrl, charDataUrl: fakeDataUrl, charDesc: 'd' },
+  oaSettings
+);
+const form = oaCalls[0].opts.body;
+const imgEntries = [...form.entries()].filter(([k]) => k === 'image[]');
+console.log('--- openai edits url:', oaCalls[0].url, '| image[] count:', imgEntries.length, '| images:', oa.images.length);
+if (!oaCalls[0].url.endsWith('/images/edits') || imgEntries.length !== 2) throw new Error('edits request malformed');
+
 console.log('ALL OK');

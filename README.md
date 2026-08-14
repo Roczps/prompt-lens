@@ -8,7 +8,8 @@
 - **弹窗入口**：点击插件图标，粘贴 / 拖入 / 上传本地图片进行反推
 - **多维度画面解构**：图像类型 + 主体 / 姿势 / 环境 / 构图 / 光线 / 色彩 / 风格 / 细节 / 氛围逐项分析，附词卡与主色色卡，点击即复制
 - **中英双语提示词**：英文提示词可直接编辑后送去生图，附中文对照
-- **侧边栏生图**：选择画幅（1:1 到 21:9）与分辨率（512 / 1K / 2K / 4K）
+- **双生图渠道**：Gemini（Nano Banana 2）与 GPT-Image（gpt-image-2），逐次生成时可切换；GPT-Image 支持 OpenAI 兼容中转站（自定义 Base URL）
+- **侧边栏生图**：选择画幅（1:1 到 21:9）与分辨率（512 / 1K / 2K / 4K，自动映射为各渠道支持的尺寸）
 - **姿势复刻**：生成时把原图作为姿态与构图约束送入模型，锁定人物姿势、裁切与画面占比（也可切换为风格参考 / 纯提示词）
 - **角色卡替换**：从反推图或上传图保存角色卡（自动识别外貌特征），生成时选择角色卡即可把画面人物替换为该角色
 - **历史记录**：本地保留最近 50 个任务，可随时回看、重新生成、下载
@@ -25,9 +26,10 @@
 | 用途 | 默认模型 | 说明 |
 | --- | --- | --- |
 | 反推提示词 | `gemini-flash-latest` | 稳定别名，自动指向最新 Flash 模型 |
-| 生成图片 | `gemini-3.1-flash-image` | Nano Banana 2，支持 4K 与多种画幅 |
+| 生成图片（Gemini 渠道） | `gemini-3.1-flash-image` | Nano Banana 2，支持 4K 与多种画幅 |
+| 生成图片（GPT-Image 渠道） | `gpt-image-2` | 走 `/v1/images/generations` 与 `/v1/images/edits`，带参考图时自动切到 edits 多图接口 |
 
-两个模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往 Google API，不经过任何第三方服务器。
+模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。
 
 ## 项目结构
 
@@ -36,6 +38,7 @@ manifest.json          MV3 清单
 background.js          服务工作线程：任务调度、调用 Gemini API
 lib/
   gemini.js            Gemini API 封装（反推 + 生图 + Key 测试）
+  openai.js            GPT-Image 渠道封装（generations / edits + 尺寸映射）
   settings.js          设置读写与默认值
   util.js              图片抓取、缩略图、base64 工具
 content/               网页内容脚本（悬浮球 + toast）
