@@ -84,7 +84,7 @@ async function startGeneration({ taskId, prompt, aspectRatio, imageSize, refMode
   if (characterId) {
     const { characters = {} } = await chrome.storage.local.get('characters');
     const char = characters[characterId];
-    if (char) {
+    if (char?.dataUrl) {
       charPart = dataUrlToInlinePart(char.dataUrl);
       charDesc = char.desc || '';
       gen.characterName = char.name || '';
@@ -129,27 +129,37 @@ async function saveCharacterRecord(char) {
 }
 
 async function createCharacter({ dataUrl, name }) {
-  const { bytes, mime } = dataUrlToBytes(dataUrl);
-  const thumb = await makeThumbnail(bytes, mime, 1024);
   const char = {
     id: uid(),
     createdAt: Date.now(),
     name: name || '角色',
-    dataUrl: thumb.dataUrl,
+    dataUrl: '',
     desc: '',
-    status: 'analyzing'
+    status: 'analyzing',
+    error: null
   };
-  await saveCharacterRecord(char);
-
   try {
+    const { bytes, mime } = dataUrlToBytes(dataUrl);
+    const thumb = await makeThumbnail(bytes, mime, 1024);
+    char.dataUrl = thumb.dataUrl;
+    await saveCharacterRecord(char);
+
     const settings = await getSettings();
     if (settings.apiKey) {
-      char.desc = await describeCharacter({ base64: thumb.base64, mimeType: thumb.mimeType }, settings);
+      try {
+        char.desc = await describeCharacter({ base64: thumb.base64, mimeType: thumb.mimeType }, settings);
+      } catch (e) {
+        // Card is still usable without the text description.
+        char.error = `外貌识别失败：${e?.message || e}`;
+      }
+    } else {
+      char.error = '未配置 API Key，跳过外貌识别';
     }
+    char.status = 'done';
   } catch (e) {
-    console.error('character description failed:', e);
+    char.status = 'error';
+    char.error = String(e?.message || e);
   }
-  char.status = 'done';
   await saveCharacterRecord(char);
 }
 

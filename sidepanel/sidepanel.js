@@ -299,7 +299,8 @@ function renderChars() {
     const name = document.createElement('span');
     name.className = 'char-name';
     name.textContent = c.name;
-    name.contentEditable = 'plaintext-only';
+    // setAttribute never throws, unlike the property setter on older Chromes.
+    name.setAttribute('contenteditable', 'plaintext-only');
     name.spellcheck = false;
     name.title = '点击修改名称';
     name.addEventListener('keydown', (e) => {
@@ -319,7 +320,14 @@ function renderChars() {
     });
     const hint = document.createElement('span');
     hint.className = 'char-hint';
-    hint.textContent = c.status === 'analyzing' ? '识别外貌中…' : c.desc ? c.desc : '';
+    if (c.status === 'analyzing') {
+      hint.textContent = '识别外貌中…';
+    } else if (c.error) {
+      hint.textContent = c.error;
+      hint.classList.add('char-hint-error');
+    } else {
+      hint.textContent = c.desc || '';
+    }
     info.append(name, hint);
 
     const del = document.createElement('button');
@@ -340,6 +348,7 @@ function renderChars() {
   const prev = sel.value;
   sel.innerHTML = '<option value="">不替换</option>';
   for (const c of arr) {
+    if (!c.dataUrl) continue;
     const opt = document.createElement('option');
     opt.value = c.id;
     opt.textContent = c.name;

@@ -330,6 +330,7 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.char-hint-error { color: var(--danger); }
 
 .history-head { margin: 4px 0 8px; }
 #history-list { display: flex; flex-direction: column; gap: 8px; }
