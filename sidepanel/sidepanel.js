@@ -20,6 +20,7 @@ const STATUS_TEXT = {
 let state = { tasks: {}, activeTaskId: null };
 let renderedTaskId = null;
 let renderedStamp = '';
+let renderedResultFor = null;
 
 async function loadState() {
   const { tasks = {}, activeTaskId = null } = await chrome.storage.local.get(['tasks', 'activeTaskId']);
@@ -56,7 +57,6 @@ function render() {
   // re-render task details when the task actually changed.
   const stamp = JSON.stringify([task.id, task.status, task.error, task.generations.map((g) => [g.id, g.status])]);
   if (task.id === renderedTaskId && stamp === renderedStamp) return;
-  const taskChanged = task.id !== renderedTaskId;
   renderedTaskId = task.id;
   renderedStamp = stamp;
 
@@ -80,7 +80,13 @@ function render() {
   const hasResult = !!task.result;
   $('result-block').classList.toggle('hidden', !hasResult);
   if (hasResult) {
-    if (taskChanged) $('prompt-en').value = task.result.prompt || '';
+    // Fill the textarea the first time this task's result appears (including
+    // the analyzing -> done transition), but never afterwards, so user edits
+    // survive re-renders triggered by generation status updates.
+    if (renderedResultFor !== task.id) {
+      $('prompt-en').value = task.result.prompt || '';
+      renderedResultFor = task.id;
+    }
     $('prompt-zh').textContent = task.result.promptZh || '（无）';
     renderTags(task.result.tags || {});
     renderPalette(task.result.palette || []);
@@ -243,10 +249,16 @@ async function init() {
   });
 
   $('btn-generate').addEventListener('click', async () => {
+    const genErr = $('gen-error');
+    genErr.classList.add('hidden');
     const task = activeTask();
     if (!task) return;
     const prompt = $('prompt-en').value.trim();
-    if (!prompt) return;
+    if (!prompt) {
+      genErr.textContent = '提示词为空，请先反推或手动填写提示词';
+      genErr.classList.remove('hidden');
+      return;
+    }
     const btn = $('btn-generate');
     btn.disabled = true;
     try {
@@ -260,7 +272,10 @@ async function init() {
           useRef: $('gen-useref').checked
         }
       });
-      if (res && !res.ok) alert(res.error);
+      if (res && !res.ok) {
+        genErr.textContent = res.error;
+        genErr.classList.remove('hidden');
+      }
     } finally {
       btn.disabled = false;
     }

@@ -115,10 +115,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     }
     case 'GENERATE': {
-      startGeneration(msg.payload)
-        .then(() => sendResponse({ ok: true }))
-        .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
-      return true;
+      // Run async; progress and errors are written to the gen record in
+      // storage, which the side panel re-renders from.
+      startGeneration(msg.payload).catch((e) => console.error('generation failed:', e));
+      sendResponse({ ok: true });
+      return false;
     }
     default:
       return false;

@@ -15,10 +15,7 @@ async function openSidePanel() {
 function analyzeFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
-  reader.onload = async () => {
-    // Open the panel first (still inside the user-gesture window), then kick
-    // off analysis and close the popup.
-    await openSidePanel();
+  reader.onload = () => {
     chrome.runtime.sendMessage({
       type: 'ANALYZE_DATA',
       payload: { dataUrl: reader.result, name: file.name || '' }
@@ -41,7 +38,13 @@ async function init() {
 
   const zone = $('dropzone');
   const fileInput = $('file-input');
-  zone.addEventListener('click', () => fileInput.click());
+  // chrome.sidePanel.open() only works inside a user-gesture context, so the
+  // panel must be opened synchronously in these handlers -- not after the
+  // async FileReader finishes.
+  zone.addEventListener('click', () => {
+    openSidePanel();
+    fileInput.click();
+  });
   fileInput.addEventListener('change', () => analyzeFile(fileInput.files[0]));
 
   zone.addEventListener('dragover', (e) => {
@@ -52,12 +55,16 @@ async function init() {
   zone.addEventListener('drop', (e) => {
     e.preventDefault();
     zone.classList.remove('drag');
+    openSidePanel();
     analyzeFile(e.dataTransfer.files[0]);
   });
 
   document.addEventListener('paste', (e) => {
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
-    if (item) analyzeFile(item.getAsFile());
+    if (item) {
+      openSidePanel();
+      analyzeFile(item.getAsFile());
+    }
   });
 
   $('btn-sidepanel').addEventListener('click', async () => {
