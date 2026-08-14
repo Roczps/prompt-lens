@@ -40,7 +40,9 @@ async function startAnalysis(source) {
     } else {
       ({ bytes, mime } = dataUrlToBytes(source.dataUrl));
     }
-    const thumb = await makeThumbnail(bytes, mime, 1024);
+    // 1280px keeps enough fine detail (fabric texture, small text, faces)
+    // for a faithful reverse-prompt without blowing up token usage.
+    const thumb = await makeThumbnail(bytes, mime, 1280);
     task.source = { ...source, dataUrl: thumb.dataUrl };
 
     task.status = 'analyzing';

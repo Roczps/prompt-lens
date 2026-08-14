@@ -6,7 +6,19 @@ const AXIS_LABELS = {
   subject: '主体',
   style: '风格',
   composition: '构图',
+  lighting: '光线',
   color: '色彩',
+  mood: '氛围'
+};
+
+const ANALYSIS_LABELS = {
+  subject: '主体',
+  environment: '环境',
+  composition: '构图',
+  lighting: '光线',
+  color: '色彩',
+  style: '风格',
+  details: '细节',
   mood: '氛围'
 };
 
@@ -88,10 +100,36 @@ function render() {
       renderedResultFor = task.id;
     }
     $('prompt-zh').textContent = task.result.promptZh || '（无）';
+    const typeBadge = $('image-type');
+    typeBadge.textContent = task.result.imageType || '';
+    typeBadge.classList.toggle('hidden', !task.result.imageType);
+    renderAnalysis(task.result.analysis || {});
     renderTags(task.result.tags || {});
     renderPalette(task.result.palette || []);
     renderGenerations(task);
   }
+}
+
+function renderAnalysis(analysis) {
+  const box = $('analysis');
+  box.innerHTML = '';
+  for (const [key, label] of Object.entries(ANALYSIS_LABELS)) {
+    const text = analysis[key];
+    if (!text) continue;
+    const row = document.createElement('div');
+    row.className = 'ana-row';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'ana-label';
+    labelEl.textContent = label;
+    const textEl = document.createElement('span');
+    textEl.className = 'ana-text';
+    textEl.textContent = text;
+    textEl.title = '点击复制';
+    textEl.addEventListener('click', () => navigator.clipboard.writeText(text));
+    row.append(labelEl, textEl);
+    box.appendChild(row);
+  }
+  box.classList.toggle('hidden', !box.children.length);
 }
 
 function renderTags(tags) {

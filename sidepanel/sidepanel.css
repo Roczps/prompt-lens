@@ -153,6 +153,39 @@ textarea:focus, select:focus, input:focus { border-color: var(--accent); }
 .chip-btn:hover { border-color: var(--accent); }
 .chip-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
 
+.type-badge {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.15);
+  border: 1px solid rgba(124, 92, 255, 0.45);
+  color: #b9a5ff;
+}
+
+#analysis { margin-bottom: 12px; }
+.ana-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ana-row:last-child { border-bottom: none; }
+.ana-label {
+  flex: 0 0 34px;
+  font-size: 12px;
+  color: var(--accent-2);
+  font-weight: 600;
+  padding-top: 1px;
+}
+.ana-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.ana-text:hover { color: var(--accent-2); }
+
 .tag-group { margin-bottom: 8px; }
 .tag-axis {
   font-size: 11px;
