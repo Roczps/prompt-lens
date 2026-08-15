@@ -1,6 +1,6 @@
 import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter } from './lib/gemini.js';
-import { generateImageOpenAI } from './lib/openai.js';
+import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
 
 const MAX_TASKS = 50;
@@ -72,6 +72,19 @@ async function startAnalysis(source) {
   await saveTask(task);
 }
 
+/**
+ * Read-modify-write a single generation record. Generations run for minutes;
+ * writing back a stale whole-task snapshot would clobber concurrent updates
+ * (e.g. a second generation started meanwhile).
+ */
+async function updateGen(taskId, genId, mutate) {
+  const tasks = await getTasks();
+  const gen = tasks[taskId]?.generations.find((g) => g.id === genId);
+  if (!gen) return;
+  mutate(gen);
+  await chrome.storage.local.set({ tasks });
+}
+
 async function startGeneration({
   taskId,
   prompt,
@@ -98,6 +111,7 @@ async function startGeneration({
     refMode,
     provider: useProvider,
     characterName: '',
+    apimartTaskId: '',
     images: [],
     error: null
   };
@@ -125,10 +139,24 @@ async function startGeneration({
     let result;
     if (useProvider === 'openai') {
       if (!settings.openaiApiKey) {
-        throw new Error('未配置 OpenAI API Key。请到设置页填写 GPT-Image 渠道的 Key。');
+        throw new Error('未配置 GPT-Image 渠道的 API Key。请到设置页填写。');
       }
       result = await generateImageOpenAI(
-        { prompt, aspectRatio, imageSize, poseRefDataUrl, styleRefDataUrl, charDataUrl, charDesc },
+        {
+          prompt,
+          aspectRatio,
+          imageSize,
+          poseRefDataUrl,
+          styleRefDataUrl,
+          charDataUrl,
+          charDesc,
+          onTaskSubmitted: async (apimartTaskId) => {
+            await updateGen(taskId, gen.id, (g) => {
+              g.apimartTaskId = apimartTaskId;
+            });
+            await syncResumeAlarm();
+          }
+        },
         settings
       );
     } else {
@@ -150,14 +178,84 @@ async function startGeneration({
     if (!images.length) {
       throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
     }
-    gen.images = images;
-    gen.status = 'done';
+    await updateGen(taskId, gen.id, (g) => {
+      g.images = images;
+      g.status = 'done';
+    });
   } catch (e) {
-    gen.status = 'error';
-    gen.error = String(e?.message || e);
+    // A pending APIMart task is not a failure: keep it running, the resume
+    // alarm keeps polling even if this service worker instance dies.
+    if (!e?.pending) {
+      await updateGen(taskId, gen.id, (g) => {
+        g.status = 'error';
+        g.error = String(e?.message || e);
+      });
+    }
   }
-  await saveTask(task);
+  await syncResumeAlarm();
 }
+
+// ---- Recovery for in-flight APIMart tasks across service worker restarts ----
+
+const activePolls = new Set();
+
+async function syncResumeAlarm() {
+  const tasks = await getTasks();
+  const hasPending = Object.values(tasks).some((t) =>
+    t.generations.some((g) => g.status === 'running' && g.apimartTaskId)
+  );
+  if (hasPending) {
+    chrome.alarms.create('plens-resume', { periodInMinutes: 0.5 });
+  } else {
+    chrome.alarms.clear('plens-resume');
+  }
+}
+
+async function resumePendingGenerations() {
+  const tasks = await getTasks();
+  const settings = await getSettings();
+  for (const task of Object.values(tasks)) {
+    for (const gen of task.generations) {
+      if (gen.status !== 'running') continue;
+      if (gen.apimartTaskId) {
+        if (activePolls.has(gen.id)) continue;
+        activePolls.add(gen.id);
+        pollApimartTask(gen.apimartTaskId, settings)
+          .then(({ images }) =>
+            updateGen(task.id, gen.id, (g) => {
+              g.images = images;
+              g.status = 'done';
+            })
+          )
+          .catch((e) => {
+            if (e?.pending) return; // alarm will re-enter later
+            return updateGen(task.id, gen.id, (g) => {
+              g.status = 'error';
+              g.error = String(e?.message || e);
+            });
+          })
+          .finally(() => {
+            activePolls.delete(gen.id);
+            syncResumeAlarm();
+          });
+      } else if (Date.now() - gen.createdAt > 10 * 60 * 1000) {
+        // Non-resumable run (Gemini or pre-submit) whose worker died.
+        await updateGen(task.id, gen.id, (g) => {
+          g.status = 'error';
+          g.error = '生成中断（浏览器回收了插件后台），请重试';
+        });
+      }
+    }
+  }
+  await syncResumeAlarm();
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'plens-resume') resumePendingGenerations();
+});
+
+// Runs on every service worker start-up (including after Chrome reclaims it).
+resumePendingGenerations();
 
 async function saveCharacterRecord(char) {
   const { characters = {} } = await chrome.storage.local.get('characters');
@@ -229,6 +327,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     case 'SAVE_CHARACTER': {
       createCharacter(msg.payload).catch((e) => console.error('save character failed:', e));
+      sendResponse({ ok: true });
+      return false;
+    }
+    case 'RESUME_PENDING': {
+      resumePendingGenerations();
       sendResponse({ ok: true });
       return false;
     }

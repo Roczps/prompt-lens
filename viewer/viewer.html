@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prompt Lens · 查看图片</title>
+  <link rel="stylesheet" href="viewer.css" />
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="20" height="20" />
+      <span id="title">查看图片</span>
+      <span id="meta" class="dim"></span>
+    </div>
+    <div class="actions">
+      <button id="btn-copy" class="chip-btn">复制提示词</button>
+      <button id="btn-download" class="chip-btn primary">下载图片</button>
+    </div>
+  </header>
+  <main id="stage">
+    <img id="img" alt="" />
+    <p id="missing" class="dim hidden">找不到这张图片，可能任务已被删除。</p>
+  </main>
+  <footer id="prompt-box" class="hidden">
+    <div class="dim label">提示词</div>
+    <p id="prompt"></p>
+  </footer>
+  <script src="viewer.js" type="module"></script>
+</body>
+</html>

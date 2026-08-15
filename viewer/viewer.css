@@ -1,0 +1,92 @@
+:root {
+  --bg: #101014;
+  --card: #18181f;
+  --border: #2a2a36;
+  --text: #e8e8ef;
+  --dim: #8b8b9a;
+  --accent: #7c5cff;
+  --accent-2: #21c4ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.hidden { display: none !important; }
+.dim { color: var(--dim); }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  min-width: 0;
+}
+.brand .dim { font-weight: 400; font-size: 12px; }
+.actions { display: flex; gap: 8px; flex: none; }
+
+.chip-btn {
+  background: #1f1f29;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+.chip-btn:hover { border-color: var(--accent); }
+.chip-btn.primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  border: none;
+  font-weight: 600;
+}
+.chip-btn.primary:hover { filter: brightness(1.1); }
+
+#stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  min-height: 0;
+}
+#img {
+  max-width: 100%;
+  max-height: calc(100vh - 180px);
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+#prompt-box {
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  padding: 14px 20px 18px;
+}
+#prompt-box .label { font-size: 12px; margin-bottom: 4px; }
+#prompt {
+  margin: 0;
+  max-width: 900px;
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

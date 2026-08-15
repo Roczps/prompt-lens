@@ -48,6 +48,11 @@ function activeTask() {
   return state.activeTaskId ? state.tasks[state.activeTaskId] : null;
 }
 
+function openViewer(taskId, extra) {
+  const p = new URLSearchParams({ t: taskId, ...extra });
+  chrome.tabs.create({ url: chrome.runtime.getURL(`viewer/viewer.html#${p.toString()}`) });
+}
+
 function fmtTime(ts) {
   const d = new Date(ts);
   const pad = (n) => String(n).padStart(2, '0');
@@ -204,6 +209,9 @@ function renderGenerations(task) {
     gen.images.forEach((dataUrl, i) => {
       const img = document.createElement('img');
       img.src = dataUrl;
+      img.title = '点击查看大图';
+      img.classList.add('zoomable');
+      img.addEventListener('click', () => openViewer(task.id, { g: gen.id, i: String(i) }));
       item.appendChild(img);
 
       const actions = document.createElement('div');
@@ -451,6 +459,15 @@ async function init() {
       renderChars();
     }
   });
+
+  $('source-img').addEventListener('click', () => {
+    const task = activeTask();
+    if (task?.source?.dataUrl) openViewer(task.id, { src: '1' });
+  });
+
+  // Wake the service worker so it resumes polling any in-flight APIMart
+  // generations that were interrupted by a worker restart.
+  chrome.runtime.sendMessage({ type: 'RESUME_PENDING' }).catch(() => {});
 
   await Promise.all([loadState(), loadChars()]);
   render();

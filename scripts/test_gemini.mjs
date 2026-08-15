@@ -168,10 +168,22 @@ globalThis.fetch = async (url, opts = {}) => {
   };
 };
 
+let submittedTaskId = '';
 const am = await generateImageOpenAI(
-  { prompt: 'p', aspectRatio: '9:16', imageSize: '2K', poseRefDataUrl: fakeDataUrl, charDataUrl: fakeDataUrl, charDesc: 'd' },
+  {
+    prompt: 'p',
+    aspectRatio: '9:16',
+    imageSize: '2K',
+    poseRefDataUrl: fakeDataUrl,
+    charDataUrl: fakeDataUrl,
+    charDesc: 'd',
+    onTaskSubmitted: (id) => {
+      submittedTaskId = id;
+    }
+  },
   apimartSettings
 );
+if (submittedTaskId !== 'task_123') throw new Error('onTaskSubmitted not called');
 const submitted = amCalls.find((c) => c.url.endsWith('/images/generations'));
 console.log('--- apimart submit:', submitted.method, '| polls:', pollCount, '| images:', am.images.length, '| starts with data:image/png:', am.images[0].startsWith('data:image/png'));
 if (pollCount < 2 || am.images.length !== 1) throw new Error('apimart flow broken');
@@ -190,6 +202,21 @@ try {
 } catch (e) {
   console.log('--- apimart failed-task error surfaced:', e.message);
   if (!e.message.includes('内容审核')) throw e;
+}
+
+// pending-timeout keeps e.pending so callers leave the gen running
+const { pollApimartTask } = await import('../lib/openai.js');
+globalThis.fetch = async () => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ code: 200, data: { status: 'processing', progress: 10 } })
+});
+try {
+  await pollApimartTask('t3', apimartSettings, { deadlineMs: 5 });
+  throw new Error('should have thrown pending');
+} catch (e) {
+  console.log('--- apimart pending timeout, e.pending =', e.pending === true);
+  if (e.pending !== true) throw e;
 }
 
 console.log('ALL OK');

@@ -96,7 +96,10 @@ main { padding: 12px 14px 24px; }
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--card-2);
+  cursor: zoom-in;
 }
+
+.zoomable { cursor: zoom-in; }
 .source-meta { flex: 1; min-width: 0; }
 .status { font-weight: 600; margin-bottom: 4px; }
 .status.running::after {
