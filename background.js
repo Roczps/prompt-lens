@@ -5,6 +5,16 @@ import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail
 
 const MAX_TASKS = 50;
 
+// One-time migration: earlier versions defaulted the GPT-Image base URL to
+// api.openai.com. If the user never configured a key, move them to the new
+// APIMart default so the channel works out of the box.
+chrome.runtime.onInstalled.addListener(async () => {
+  const s = await chrome.storage.sync.get(['openaiApiKey', 'openaiBaseUrl']);
+  if (!s.openaiApiKey && s.openaiBaseUrl === 'https://api.openai.com/v1') {
+    await chrome.storage.sync.set({ openaiBaseUrl: 'https://api.apimart.ai/v1' });
+  }
+});
+
 async function getTasks() {
   const { tasks = {} } = await chrome.storage.local.get('tasks');
   return tasks;

@@ -10,6 +10,7 @@ const FIELDS = [
   'openaiApiKey',
   'openaiBaseUrl',
   'openaiImageModel',
+  'openaiProtocol',
   'imageProvider',
   'aspectRatio',
   'imageSize',

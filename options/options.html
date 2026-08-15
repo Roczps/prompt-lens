@@ -40,18 +40,19 @@
     <section class="card">
       <h2>GPT-Image 渠道（可选）</h2>
       <label>
-        OpenAI API Key
+        API Key
         <div class="key-row">
           <input type="password" id="openaiApiKey" placeholder="sk-..." autocomplete="off" />
           <button id="btn-test-openai" class="chip-btn">测试</button>
         </div>
+        <span class="hint">APIMart 的 Key 在 <a href="https://apimart.ai/keys" target="_blank" rel="noreferrer">apimart.ai/keys</a> 获取；也支持 OpenAI 官方或其他兼容中转的 Key</span>
         <span id="test-openai-result" class="hint"></span>
       </label>
       <div class="row">
         <label>
           接口地址（Base URL）
-          <input type="text" id="openaiBaseUrl" placeholder="https://api.openai.com/v1" />
-          <span class="hint">支持 OpenAI 兼容中转站，填到 /v1 为止</span>
+          <input type="text" id="openaiBaseUrl" placeholder="https://api.apimart.ai/v1" />
+          <span class="hint">默认 APIMart，填到 /v1 为止</span>
         </label>
         <label>
           生图模型
@@ -59,6 +60,15 @@
           <span class="hint">默认 gpt-image-2</span>
         </label>
       </div>
+      <label>
+        接口协议
+        <select id="openaiProtocol">
+          <option value="auto">自动识别（推荐）</option>
+          <option value="apimart">APIMart 异步任务</option>
+          <option value="openai">OpenAI 官方同步</option>
+        </select>
+        <span class="hint">APIMart 等异步中转：提交任务后自动轮询取图；自动识别按接口地址判断</span>
+      </label>
     </section>
 
     <section class="card">
