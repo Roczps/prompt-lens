@@ -208,10 +208,13 @@ function renderGenerations(task) {
       item.appendChild(err);
       const retry = document.createElement('button');
       retry.className = 'chip-btn retry-btn';
-      retry.textContent = '重试这张';
+      retry.textContent = '重试这张（用当前渠道）';
       retry.addEventListener('click', () => {
         retry.disabled = true;
-        chrome.runtime.sendMessage({ type: 'RETRY_GEN', payload: { taskId: task.id, genId: gen.id } });
+        chrome.runtime.sendMessage({
+          type: 'RETRY_GEN',
+          payload: { taskId: task.id, genId: gen.id, provider: $('gen-provider').value }
+        });
       });
       item.appendChild(retry);
     }

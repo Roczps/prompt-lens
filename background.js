@@ -2,7 +2,7 @@ import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter, planPostSet } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { getPreset, NEGATIVE_TAIL } from './lib/presets.js';
-import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
+import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail, friendlyGenError } from './lib/util.js';
 
 const MAX_TASKS = 50;
 
@@ -184,7 +184,7 @@ async function executeGeneration(taskId, genId) {
     if (!e?.pending) {
       await updateGen(taskId, genId, (g) => {
         g.status = 'error';
-        g.error = String(e?.message || e);
+        g.error = friendlyGenError(e);
       });
     }
   }
@@ -220,13 +220,14 @@ async function startGeneration({
   await executeGeneration(taskId, gen.id);
 }
 
-async function retryGeneration({ taskId, genId }) {
+async function retryGeneration({ taskId, genId, provider = '' }) {
   await updateGen(taskId, genId, (g) => {
     g.status = 'running';
     g.error = null;
     g.apimartTaskId = '';
     g.images = [];
     g.createdAt = Date.now();
+    if (provider) g.provider = provider;
   });
   await executeGeneration(taskId, genId);
 }
@@ -261,6 +262,7 @@ async function startPostSet({
 
   const char = await getCharacter(characterId);
   const preset = getPreset(presetId);
+  const useProvider = provider || settings.imageProvider || 'gemini';
   const inline = dataUrlToInlinePart(task.source.dataUrl).inlineData;
   const shots = await planPostSet(
     {
@@ -271,13 +273,13 @@ async function startPostSet({
       platform,
       count: Number(count) || 4,
       preset,
-      negativeTail: NEGATIVE_TAIL
+      negativeTail: NEGATIVE_TAIL,
+      provider: useProvider
     },
     settings
   );
 
   const setId = uid();
-  const useProvider = provider || settings.imageProvider || 'gemini';
   const gens = shots.map((shot, i) =>
     makeGenRecord({
       prompt: shot.prompt,

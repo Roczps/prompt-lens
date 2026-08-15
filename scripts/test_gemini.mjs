@@ -289,4 +289,21 @@ for (const p of POST_PRESETS) {
   if (!p.id || !p.name || !p.styleAnchor || !p.rhythm || !p.platformAspect) throw new Error('preset missing field: ' + p.id);
 }
 
+// 8. safety handling: dress constraint for GPT-Image + friendly error mapping
+await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', platform: 'xhs', count: 1, provider: 'openai' },
+  settings
+);
+const dressConstraint = planInstruction.includes('内容安全硬约束') && planInstruction.includes('严禁裸上身');
+await planPostSet({ base64: 'x', mimeType: 'image/jpeg', platform: 'xhs', count: 1, provider: 'gemini' }, settings);
+const noConstraintForGemini = !planInstruction.includes('内容安全硬约束');
+console.log('--- openai dress constraint:', dressConstraint, '| gemini unconstrained:', noConstraintForGemini);
+if (!dressConstraint || !noConstraintForGemini) throw new Error('dress constraint injection broken');
+
+const { friendlyGenError } = await import('../lib/util.js');
+const mapped = friendlyGenError(new Error('Your prompt or input was rejected by the content safety system.'));
+const passthrough = friendlyGenError(new Error('HTTP 500 boring error'));
+console.log('--- friendly safety error:', mapped.startsWith('内容安全审核未通过'), '| passthrough:', passthrough === 'HTTP 500 boring error');
+if (!mapped.includes('重试这张') || passthrough !== 'HTTP 500 boring error') throw new Error('friendlyGenError broken');
+
 console.log('ALL OK');
