@@ -111,6 +111,29 @@
           <div id="gen-error" class="error hidden"></div>
           <div id="generations"></div>
         </div>
+
+        <div class="card">
+          <div class="card-head"><h2>组图创作</h2></div>
+          <p class="dim set-hint">以当前图为风格锚，AI 策划分镜后批量生成同一角色的一组 post 图。角色替换、渠道、分辨率沿用上方"生成新图"的设置。</p>
+          <div class="gen-controls">
+            <label>平台 · 画幅
+              <select id="set-platform">
+                <option value="xhs|3:4">小红书 · 3:4</option>
+                <option value="ins|4:5">Instagram · 4:5</option>
+                <option value="ins|1:1">Instagram · 1:1</option>
+              </select>
+            </label>
+            <label>张数
+              <select id="set-count">
+                <option value="4">4 张</option>
+                <option value="5">5 张</option>
+                <option value="6">6 张</option>
+              </select>
+            </label>
+          </div>
+          <button id="btn-generate-set" class="primary">策划并生成组图</button>
+          <div id="set-error" class="error hidden"></div>
+        </div>
       </div>
 
       <div class="card">

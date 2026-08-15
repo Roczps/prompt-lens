@@ -219,4 +219,41 @@ try {
   if (e.pending !== true) throw e;
 }
 
+// 6. post set planning
+const { planPostSet } = await import('../lib/gemini.js');
+globalThis.fetch = async (url, opts) => {
+  const body = JSON.parse(opts.body);
+  const text = body.contents[0].parts[1].text;
+  if (!text.includes('小红书') || !text.includes('4 张')) throw new Error('plan instruction missing platform/count');
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify([
+                  { label: '封面·全身街拍', prompt: 'full body street shot ...' },
+                  { label: '半身特写', prompt: 'waist-up closeup ...' },
+                  { label: '侧影', prompt: 'side profile ...' },
+                  { label: '细节', prompt: 'detail shot ...' },
+                  { label: '多余的一张', prompt: 'extra ...' }
+                ])
+              }
+            ]
+          }
+        }
+      ]
+    })
+  };
+};
+const shots = await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', stylePrompt: 'sp', charDesc: '短发', platform: 'xhs', count: 4 },
+  settings
+);
+console.log('--- planPostSet shots:', shots.length, '| first:', shots[0].label);
+if (shots.length !== 4 || shots[0].label !== '封面·全身街拍') throw new Error('planPostSet broken');
+
 console.log('ALL OK');

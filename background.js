@@ -1,5 +1,5 @@
 import { getSettings } from './lib/settings.js';
-import { reversePrompt, generateImage, describeCharacter } from './lib/gemini.js';
+import { reversePrompt, generateImage, describeCharacter, planPostSet } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
 
@@ -85,6 +85,110 @@ async function updateGen(taskId, genId, mutate) {
   await chrome.storage.local.set({ tasks });
 }
 
+async function getCharacter(characterId) {
+  if (!characterId) return null;
+  const { characters = {} } = await chrome.storage.local.get('characters');
+  const char = characters[characterId];
+  return char?.dataUrl ? char : null;
+}
+
+function makeGenRecord(params) {
+  return {
+    id: uid(),
+    createdAt: Date.now(),
+    status: 'running',
+    prompt: params.prompt,
+    aspectRatio: params.aspectRatio,
+    imageSize: params.imageSize,
+    refMode: params.refMode,
+    provider: params.provider,
+    characterId: params.characterId || '',
+    characterName: params.characterName || '',
+    setId: params.setId || '',
+    setLabel: params.setLabel || '',
+    setIndex: params.setIndex || 0,
+    setTotal: params.setTotal || 0,
+    apimartTaskId: '',
+    images: [],
+    error: null
+  };
+}
+
+/** Execute one persisted generation record (used by single runs, sets, retries). */
+async function executeGeneration(taskId, genId) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  const gen = task?.generations.find((g) => g.id === genId);
+  if (!task || !gen) return;
+
+  try {
+    const settings = await getSettings();
+    const char = await getCharacter(gen.characterId);
+    const charDataUrl = char?.dataUrl || '';
+    const charDesc = char?.desc || '';
+    const sourceDataUrl = task.source?.dataUrl || '';
+    const poseRefDataUrl = gen.refMode === 'pose' ? sourceDataUrl : '';
+    const styleRefDataUrl = gen.refMode === 'style' ? sourceDataUrl : '';
+
+    let result;
+    if (gen.provider === 'openai') {
+      if (!settings.openaiApiKey) {
+        throw new Error('未配置 GPT-Image 渠道的 API Key。请到设置页填写。');
+      }
+      result = await generateImageOpenAI(
+        {
+          prompt: gen.prompt,
+          aspectRatio: gen.aspectRatio,
+          imageSize: gen.imageSize,
+          poseRefDataUrl,
+          styleRefDataUrl,
+          charDataUrl,
+          charDesc,
+          onTaskSubmitted: async (apimartTaskId) => {
+            await updateGen(taskId, genId, (g) => {
+              g.apimartTaskId = apimartTaskId;
+            });
+            await syncResumeAlarm();
+          }
+        },
+        settings
+      );
+    } else {
+      if (!settings.apiKey) throw new Error('未配置 Gemini API Key');
+      result = await generateImage(
+        {
+          prompt: gen.prompt,
+          aspectRatio: gen.aspectRatio,
+          imageSize: gen.imageSize,
+          poseRefPart: poseRefDataUrl ? dataUrlToInlinePart(poseRefDataUrl) : null,
+          styleRefPart: styleRefDataUrl ? dataUrlToInlinePart(styleRefDataUrl) : null,
+          charPart: charDataUrl ? dataUrlToInlinePart(charDataUrl) : null,
+          charDesc
+        },
+        settings
+      );
+    }
+    const { images, text } = result;
+    if (!images.length) {
+      throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
+    }
+    await updateGen(taskId, genId, (g) => {
+      g.images = images;
+      g.status = 'done';
+    });
+  } catch (e) {
+    // A pending APIMart task is not a failure: keep it running, the resume
+    // alarm keeps polling even if this service worker instance dies.
+    if (!e?.pending) {
+      await updateGen(taskId, genId, (g) => {
+        g.status = 'error';
+        g.error = String(e?.message || e);
+      });
+    }
+  }
+  await syncResumeAlarm();
+}
+
 async function startGeneration({
   taskId,
   prompt,
@@ -99,100 +203,97 @@ async function startGeneration({
   if (!task) throw new Error('任务不存在');
 
   const settings = await getSettings();
-  const useProvider = provider || settings.imageProvider || 'gemini';
-
-  const gen = {
-    id: uid(),
-    createdAt: Date.now(),
-    status: 'running',
+  const char = await getCharacter(characterId);
+  const gen = makeGenRecord({
     prompt,
     aspectRatio,
     imageSize,
     refMode,
-    provider: useProvider,
-    characterName: '',
-    apimartTaskId: '',
-    images: [],
-    error: null
-  };
-
-  let charDataUrl = '';
-  let charDesc = '';
-  if (characterId) {
-    const { characters = {} } = await chrome.storage.local.get('characters');
-    const char = characters[characterId];
-    if (char?.dataUrl) {
-      charDataUrl = char.dataUrl;
-      charDesc = char.desc || '';
-      gen.characterName = char.name || '';
-    }
-  }
-
+    provider: provider || settings.imageProvider || 'gemini',
+    characterId: char ? characterId : '',
+    characterName: char?.name || ''
+  });
   task.generations.unshift(gen);
   await saveTask(task);
+  await executeGeneration(taskId, gen.id);
+}
 
-  try {
-    const sourceDataUrl = task.source?.dataUrl || '';
-    const poseRefDataUrl = refMode === 'pose' ? sourceDataUrl : '';
-    const styleRefDataUrl = refMode === 'style' ? sourceDataUrl : '';
+async function retryGeneration({ taskId, genId }) {
+  await updateGen(taskId, genId, (g) => {
+    g.status = 'running';
+    g.error = null;
+    g.apimartTaskId = '';
+    g.images = [];
+    g.createdAt = Date.now();
+  });
+  await executeGeneration(taskId, genId);
+}
 
-    let result;
-    if (useProvider === 'openai') {
-      if (!settings.openaiApiKey) {
-        throw new Error('未配置 GPT-Image 渠道的 API Key。请到设置页填写。');
-      }
-      result = await generateImageOpenAI(
-        {
-          prompt,
-          aspectRatio,
-          imageSize,
-          poseRefDataUrl,
-          styleRefDataUrl,
-          charDataUrl,
-          charDesc,
-          onTaskSubmitted: async (apimartTaskId) => {
-            await updateGen(taskId, gen.id, (g) => {
-              g.apimartTaskId = apimartTaskId;
-            });
-            await syncResumeAlarm();
-          }
-        },
-        settings
-      );
-    } else {
-      if (!settings.apiKey) throw new Error('未配置 Gemini API Key');
-      result = await generateImage(
-        {
-          prompt,
-          aspectRatio,
-          imageSize,
-          poseRefPart: poseRefDataUrl ? dataUrlToInlinePart(poseRefDataUrl) : null,
-          styleRefPart: styleRefDataUrl ? dataUrlToInlinePart(styleRefDataUrl) : null,
-          charPart: charDataUrl ? dataUrlToInlinePart(charDataUrl) : null,
-          charDesc
-        },
-        settings
-      );
+async function runWithConcurrency(jobs, limit) {
+  const queue = [...jobs];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) {
+      await queue.shift()();
     }
-    const { images, text } = result;
-    if (!images.length) {
-      throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
-    }
-    await updateGen(taskId, gen.id, (g) => {
-      g.images = images;
-      g.status = 'done';
-    });
-  } catch (e) {
-    // A pending APIMart task is not a failure: keep it running, the resume
-    // alarm keeps polling even if this service worker instance dies.
-    if (!e?.pending) {
-      await updateGen(taskId, gen.id, (g) => {
-        g.status = 'error';
-        g.error = String(e?.message || e);
-      });
-    }
-  }
-  await syncResumeAlarm();
+  });
+  await Promise.all(workers);
+}
+
+async function startPostSet({ taskId, platform, aspectRatio, count, characterId = '', provider = '', imageSize }) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  if (!task) throw new Error('任务不存在');
+  if (!task.source?.dataUrl) throw new Error('缺少参考图，无法策划组图');
+
+  const settings = await getSettings();
+  if (!settings.apiKey) throw new Error('组图分镜策划需要 Gemini API Key（设置页填写）');
+
+  const char = await getCharacter(characterId);
+  const inline = dataUrlToInlinePart(task.source.dataUrl).inlineData;
+  const shots = await planPostSet(
+    {
+      base64: inline.data,
+      mimeType: inline.mimeType,
+      stylePrompt: task.result?.prompt || '',
+      charDesc: char?.desc || '',
+      platform,
+      count: Number(count) || 4
+    },
+    settings
+  );
+
+  const setId = uid();
+  const useProvider = provider || settings.imageProvider || 'gemini';
+  const gens = shots.map((shot, i) =>
+    makeGenRecord({
+      prompt: shot.prompt,
+      aspectRatio,
+      imageSize,
+      refMode: 'style',
+      provider: useProvider,
+      characterId: char ? characterId : '',
+      characterName: char?.name || '',
+      setId,
+      setLabel: shot.label,
+      setIndex: i + 1,
+      setTotal: shots.length
+    })
+  );
+
+  // Persist all shots first (unshift in reverse so shot 1 ends up on top).
+  const freshTasks = await getTasks();
+  const freshTask = freshTasks[taskId];
+  if (!freshTask) throw new Error('任务不存在');
+  for (const gen of [...gens].reverse()) freshTask.generations.unshift(gen);
+  await chrome.storage.local.set({ tasks: freshTasks, activeTaskId: taskId });
+
+  // Fire and forget: two at a time to stay under provider rate limits.
+  runWithConcurrency(
+    gens.map((gen) => () => executeGeneration(taskId, gen.id)),
+    2
+  ).catch((e) => console.error('post set failed:', e));
+
+  return shots.length;
 }
 
 // ---- Recovery for in-flight APIMart tasks across service worker restarts ----
@@ -329,6 +430,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       createCharacter(msg.payload).catch((e) => console.error('save character failed:', e));
       sendResponse({ ok: true });
       return false;
+    }
+    case 'RETRY_GEN': {
+      retryGeneration(msg.payload).catch((e) => console.error('retry failed:', e));
+      sendResponse({ ok: true });
+      return false;
+    }
+    case 'GENERATE_SET': {
+      startPostSet(msg.payload)
+        .then((count) => sendResponse({ ok: true, count }))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+      return true;
     }
     case 'RESUME_PENDING': {
       resumePendingGenerations();

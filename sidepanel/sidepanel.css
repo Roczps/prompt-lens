@@ -289,6 +289,8 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-bottom: 8px;
 }
 .gen-actions { display: flex; gap: 6px; }
+.retry-btn { margin-top: 8px; }
+.set-hint { font-size: 12px; margin: 0 0 10px; }
 
 .chars-empty { font-size: 12px; margin: 0; }
 .char-list { display: flex; flex-direction: column; gap: 8px; }

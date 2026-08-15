@@ -193,10 +193,11 @@ function renderGenerations(task) {
     const meta = document.createElement('div');
     meta.className = 'gen-meta';
     const statusText = gen.status === 'running' ? '生成中…' : gen.status === 'error' ? '失败' : '完成';
-    const modeText = [PROVIDER_LABELS[gen.provider] || '', REF_MODE_LABELS[gen.refMode] || '', gen.characterName || '']
+    const setText = gen.setId ? `组图 ${gen.setIndex}/${gen.setTotal} · ${gen.setLabel}` : '';
+    const modeText = [setText, gen.aspectRatio + ' · ' + gen.imageSize, PROVIDER_LABELS[gen.provider] || '', REF_MODE_LABELS[gen.refMode] || '', gen.characterName || '']
       .filter(Boolean)
       .join(' · ');
-    meta.innerHTML = `<span>${gen.aspectRatio} · ${gen.imageSize}${modeText ? ' · ' + modeText : ''}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
+    meta.innerHTML = `<span>${modeText}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
     item.appendChild(meta);
 
     if (gen.status === 'error') {
@@ -204,6 +205,14 @@ function renderGenerations(task) {
       err.className = 'error';
       err.textContent = gen.error || '生成失败';
       item.appendChild(err);
+      const retry = document.createElement('button');
+      retry.className = 'chip-btn retry-btn';
+      retry.textContent = '重试这张';
+      retry.addEventListener('click', () => {
+        retry.disabled = true;
+        chrome.runtime.sendMessage({ type: 'RETRY_GEN', payload: { taskId: task.id, genId: gen.id } });
+      });
+      item.appendChild(retry);
     }
 
     gen.images.forEach((dataUrl, i) => {
@@ -425,6 +434,38 @@ async function init() {
       }
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  $('btn-generate-set').addEventListener('click', async () => {
+    const setErr = $('set-error');
+    setErr.classList.add('hidden');
+    const task = activeTask();
+    if (!task) return;
+    const [platform, aspectRatio] = $('set-platform').value.split('|');
+    const btn = $('btn-generate-set');
+    btn.disabled = true;
+    btn.textContent = 'AI 策划分镜中…';
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'GENERATE_SET',
+        payload: {
+          taskId: task.id,
+          platform,
+          aspectRatio,
+          count: Number($('set-count').value),
+          imageSize: $('gen-size').value,
+          provider: $('gen-provider').value,
+          characterId: $('gen-character').value
+        }
+      });
+      if (res && !res.ok) {
+        setErr.textContent = res.error;
+        setErr.classList.remove('hidden');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '策划并生成组图';
     }
   });
 
