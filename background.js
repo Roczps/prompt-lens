@@ -1,6 +1,7 @@
 import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter, planPostSet } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
+import { getPreset, NEGATIVE_TAIL } from './lib/presets.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail } from './lib/util.js';
 
 const MAX_TASKS = 50;
@@ -108,6 +109,7 @@ function makeGenRecord(params) {
     setLabel: params.setLabel || '',
     setIndex: params.setIndex || 0,
     setTotal: params.setTotal || 0,
+    setPreset: params.setPreset || '',
     apimartTaskId: '',
     images: [],
     error: null
@@ -239,7 +241,16 @@ async function runWithConcurrency(jobs, limit) {
   await Promise.all(workers);
 }
 
-async function startPostSet({ taskId, platform, aspectRatio, count, characterId = '', provider = '', imageSize }) {
+async function startPostSet({
+  taskId,
+  platform,
+  aspectRatio,
+  count,
+  characterId = '',
+  provider = '',
+  imageSize,
+  presetId = ''
+}) {
   const tasks = await getTasks();
   const task = tasks[taskId];
   if (!task) throw new Error('任务不存在');
@@ -249,6 +260,7 @@ async function startPostSet({ taskId, platform, aspectRatio, count, characterId 
   if (!settings.apiKey) throw new Error('组图分镜策划需要 Gemini API Key（设置页填写）');
 
   const char = await getCharacter(characterId);
+  const preset = getPreset(presetId);
   const inline = dataUrlToInlinePart(task.source.dataUrl).inlineData;
   const shots = await planPostSet(
     {
@@ -257,7 +269,9 @@ async function startPostSet({ taskId, platform, aspectRatio, count, characterId 
       stylePrompt: task.result?.prompt || '',
       charDesc: char?.desc || '',
       platform,
-      count: Number(count) || 4
+      count: Number(count) || 4,
+      preset,
+      negativeTail: NEGATIVE_TAIL
     },
     settings
   );
@@ -276,7 +290,8 @@ async function startPostSet({ taskId, platform, aspectRatio, count, characterId 
       setId,
       setLabel: shot.label,
       setIndex: i + 1,
-      setTotal: shots.length
+      setTotal: shots.length,
+      setPreset: preset?.name || ''
     })
   );
 

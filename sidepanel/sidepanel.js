@@ -1,4 +1,5 @@
 import { getSettings } from '../lib/settings.js';
+import { POST_PRESETS, getPreset } from '../lib/presets.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -437,6 +438,18 @@ async function init() {
     }
   });
 
+  const presetSelect = $('set-preset');
+  for (const preset of POST_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = preset.id;
+    opt.textContent = preset.name;
+    presetSelect.appendChild(opt);
+  }
+  presetSelect.addEventListener('change', () => {
+    const preset = getPreset(presetSelect.value);
+    if (preset) $('set-platform').value = preset.platformAspect;
+  });
+
   $('btn-generate-set').addEventListener('click', async () => {
     const setErr = $('set-error');
     setErr.classList.add('hidden');
@@ -456,7 +469,8 @@ async function init() {
           count: Number($('set-count').value),
           imageSize: $('gen-size').value,
           provider: $('gen-provider').value,
-          characterId: $('gen-character').value
+          characterId: $('gen-character').value,
+          presetId: $('set-preset').value
         }
       });
       if (res && !res.ok) {

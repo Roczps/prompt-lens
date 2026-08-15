@@ -256,4 +256,37 @@ const shots = await planPostSet(
 console.log('--- planPostSet shots:', shots.length, '| first:', shots[0].label);
 if (shots.length !== 4 || shots[0].label !== '封面·全身街拍') throw new Error('planPostSet broken');
 
+// 7. post set planning with a content preset
+const { POST_PRESETS, getPreset, NEGATIVE_TAIL } = await import('../lib/presets.js');
+if (POST_PRESETS.length < 8) throw new Error('preset library incomplete');
+const preset = getPreset('xhs-cafe');
+let planInstruction = '';
+globalThis.fetch = async (url, opts) => {
+  planInstruction = JSON.parse(opts.body).contents[0].parts[1].text;
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: JSON.stringify([{ label: '封面', prompt: 'cover shot in a cafe' }]) }]
+          }
+        }
+      ]
+    })
+  };
+};
+const presetShots = await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', stylePrompt: 'sp', charDesc: '', platform: 'xhs', count: 1, preset, negativeTail: NEGATIVE_TAIL },
+  settings
+);
+const anchorInjected = planInstruction.includes(preset.styleAnchor) && planInstruction.includes(preset.rhythm);
+const tailAppended = presetShots[0].prompt.endsWith(NEGATIVE_TAIL);
+console.log('--- preset anchor injected:', anchorInjected, '| negative tail appended:', tailAppended);
+if (!anchorInjected || !tailAppended) throw new Error('preset injection broken');
+for (const p of POST_PRESETS) {
+  if (!p.id || !p.name || !p.styleAnchor || !p.rhythm || !p.platformAspect) throw new Error('preset missing field: ' + p.id);
+}
+
 console.log('ALL OK');
