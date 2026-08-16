@@ -60,6 +60,23 @@ function showError(id, message) {
   el.classList.toggle('hidden', !message);
 }
 
+/**
+ * sendMessage throws "Extension context invalidated" when the extension was
+ * reloaded while this tab stayed open -- translate it into an actionable hint
+ * instead of failing silently.
+ */
+async function sendToBackground(msg) {
+  try {
+    return await chrome.runtime.sendMessage(msg);
+  } catch (e) {
+    const raw = String(e?.message || e);
+    if (/context invalidated|receiving end does not exist/i.test(raw)) {
+      return { ok: false, error: '插件已重新加载，和本页面的连接断开了。请刷新此标签页（F5）后重试。' };
+    }
+    return { ok: false, error: raw };
+  }
+}
+
 // ---- rendering ----
 
 function render() {
@@ -308,8 +325,9 @@ function renderChars() {
 
 // ---- actions ----
 
-function analyzeDataUrl(dataUrl, name = '') {
-  chrome.runtime.sendMessage({ type: 'ANALYZE_DATA', payload: { dataUrl, name } });
+async function analyzeDataUrl(dataUrl, name = '') {
+  const res = await sendToBackground({ type: 'ANALYZE_DATA', payload: { dataUrl, name } });
+  if (res && !res.ok) showError('gen-error', res.error);
 }
 
 function selectedProviders() {
@@ -333,7 +351,7 @@ async function generateCompare() {
   const btn = $('btn-generate');
   btn.disabled = true;
   try {
-    const res = await chrome.runtime.sendMessage({
+    const res = await sendToBackground({
       type: 'GENERATE_COMPARE',
       payload: {
         taskId: task.id,
@@ -363,7 +381,7 @@ async function generateVideo() {
   const btn = $('btn-generate-video');
   btn.disabled = true;
   try {
-    const res = await chrome.runtime.sendMessage({
+    const res = await sendToBackground({
       type: 'GENERATE_VIDEO',
       payload: {
         taskId: task.id,

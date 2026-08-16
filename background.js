@@ -344,8 +344,12 @@ async function startCompareGeneration({
   for (const gen of [...gens].reverse()) task.generations.unshift(gen);
   await saveTask(task);
 
-  // Different backends, no shared rate limit: run them all in parallel.
-  await Promise.all(gens.map((gen) => executeGeneration(taskId, gen.id)));
+  // Fire and forget: different backends have no shared rate limit, and the
+  // caller must get its response as soon as the records exist -- results
+  // stream in through storage updates.
+  Promise.all(gens.map((gen) => executeGeneration(taskId, gen.id))).catch((e) =>
+    console.error('compare generation failed:', e)
+  );
   return gens.length;
 }
 
