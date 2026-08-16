@@ -36,6 +36,13 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (!s.comfyCheckpoint) {
     await chrome.storage.sync.set({ comfyCheckpoint: 'z_image_turbo_bf16.safetensors' });
   }
+  // 1.0.1: one-shot reset of the default resolution to 1K so Seedream 5.0 Pro
+  // bills at the cheap 1.5K tier ($0.045). Guarded by a revision marker so
+  // later manual choices are never overwritten again.
+  const { settingsRevision = 0 } = await chrome.storage.sync.get('settingsRevision');
+  if (settingsRevision < 2) {
+    await chrome.storage.sync.set({ imageSize: '1K', settingsRevision: 2 });
+  }
 });
 
 async function getTasks() {
