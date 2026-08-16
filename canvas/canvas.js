@@ -67,7 +67,16 @@ function showError(id, message) {
  */
 async function sendToBackground(msg) {
   try {
-    return await chrome.runtime.sendMessage(msg);
+    const res = await chrome.runtime.sendMessage(msg);
+    // Every canvas message type gets an { ok } response from the current
+    // background. undefined means an outdated service worker ignored it.
+    if (res === undefined) {
+      return {
+        ok: false,
+        error: '插件后台还是旧版本，不认识这个操作。请到 chrome://extensions 点击本插件卡片上的刷新按钮（圆形箭头），再重新打开此页面。'
+      };
+    }
+    return res;
   } catch (e) {
     const raw = String(e?.message || e);
     if (/context invalidated|receiving end does not exist/i.test(raw)) {
