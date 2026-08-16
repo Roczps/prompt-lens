@@ -35,7 +35,7 @@
 | 生成图片（GPT-Image 渠道） | `gpt-image-2` | 默认 APIMart 异步协议（提交任务 → 轮询 → 下载）；切到 OpenAI 官方时走同步 `generations`/`edits` 接口 |
 | 生成图片（Seedream 渠道） | `bytedance/seedream-v4.5` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
 | 生成图片（ComfyUI 渠道） | 本地 checkpoint | 连本机 `http://127.0.0.1:8188`，设置页测试连通后可直接选模型 |
-| 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8000` 的 FlowAgent（Google Flow 桥接），无需 API Key |
+| 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8001` 的 FlowAgent（Google Flow 桥接），无需 API Key |
 
 模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。
 

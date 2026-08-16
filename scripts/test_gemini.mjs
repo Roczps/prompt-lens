@@ -536,7 +536,7 @@ try {
 // 12. FlowAgent video: submit -> job id -> poll -> download mp4
 const { generateVideoFlow, pollFlowVideoJob } = await import('../lib/flowagent.js');
 
-const flowSettings = { flowagentBaseUrl: 'http://127.0.0.1:8000', pollIntervalMs: 1 };
+const flowSettings = { flowagentBaseUrl: 'http://127.0.0.1:8001', pollIntervalMs: 1 };
 let flowPollCount = 0;
 let flowSubmitBody = null;
 globalThis.fetch = async (url, opts = {}) => {

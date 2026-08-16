@@ -60,7 +60,7 @@ scripts/          test_gemini.mjs（离线测试）、gen_icons.py（图标生�
 ## 用户使用配置（换机后需重新配置）
 
 - API Key 存在浏览器 chrome.storage.sync，不在仓库里。PC 上加载插件后要在设置页重新填：Gemini API Key（必须，反推和策划都用它）、APIMart Key（可选，GPT-Image 渠道，baseUrl 默认 https://api.apimart.ai/v1）、Atlas Cloud Key（可选，Seedream 渠道）。
-- 本地服务（可选）：ComfyUI 默认 http://127.0.0.1:8188（设置页测试连通后可下拉选 checkpoint）；FlowAgent 默认 http://127.0.0.1:8000（视频，无需 Key）。
+- 本地服务（可选）：ComfyUI 默认 http://127.0.0.1:8188（设置页测试连通后可下拉选 checkpoint）；FlowAgent 默认 http://127.0.0.1:8001（视频，无需 Key；8001 是共享后端桥的 OpenAI 兼容端口）。
 - 加载方式：chrome://extensions → 开发者模式 → 加载已解压的扩展程序 → 选本文件夹。
 
 ## 已知待办 / 可能的下一步

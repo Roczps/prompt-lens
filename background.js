@@ -13,9 +13,14 @@ const MAX_TASKS = 50;
 // api.openai.com. If the user never configured a key, move them to the new
 // APIMart default so the channel works out of the box.
 chrome.runtime.onInstalled.addListener(async () => {
-  const s = await chrome.storage.sync.get(['openaiApiKey', 'openaiBaseUrl']);
+  const s = await chrome.storage.sync.get(['openaiApiKey', 'openaiBaseUrl', 'flowagentBaseUrl']);
   if (!s.openaiApiKey && s.openaiBaseUrl === 'https://api.openai.com/v1') {
     await chrome.storage.sync.set({ openaiBaseUrl: 'https://api.apimart.ai/v1' });
+  }
+  // 0.9.0 shipped with port 8000 as the FlowAgent default; the shared backend
+  // actually serves the OpenAI-compatible API on 8001.
+  if (s.flowagentBaseUrl === 'http://127.0.0.1:8000') {
+    await chrome.storage.sync.set({ flowagentBaseUrl: 'http://127.0.0.1:8001' });
   }
 });
 
