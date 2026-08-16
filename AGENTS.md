@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **0.9.0**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.0.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -18,8 +18,8 @@ lib/
   settings.js     设置默认值 + chrome.storage.sync 读写
   gemini.js       Gemini 封装：reversePrompt(多维解构) / generateImage / describeCharacter / planPostSet(组图分镜策划)
   openai.js       GPT-Image 渠道：OpenAI 官方同步协议 + APIMart 异步任务协议（提交→轮询→下载）
-  atlas.js        Seedream 渠道（Atlas Cloud）：generateImage 提交→轮询 prediction；参考图自动切 /edit 模型变体
-  comfy.js        本地 ComfyUI 渠道：内置 txt2img 工作流图→POST /prompt→轮询 /history→/view 取图
+  atlas.js        Seedream 渠道（Atlas Cloud）：generateImage 提交→轮询 prediction；参考图自动切 /edit 模型变体；默认 Seedream 5.0 Pro（只接受枚举尺寸表，v4 用宽高预设）
+  comfy.js        本地 ComfyUI 渠道：checkpoint txt2img 工作流 + Z-Image Turbo 专属工作流（模型名匹配 z[-_]?image 自动切换：UNETLoader + lumina2 CLIP(qwen_3_4b) + Flux AE，固定 9 步 CFG 1.0）→POST /prompt→轮询 /history→/view 取图
   flowagent.js    FlowAgent 视频（本机 Google Flow 桥接，OpenAI 兼容）：提交→轮询 job→下载 mp4；响应解析容错多种 fork
   presets.js      8 个组图内容预设（英文风格锚 + 中文分镜节奏 + 平台规则）+ NEGATIVE_TAIL 负面词
   util.js         uid / base64 / 缩略图（OffscreenCanvas, 1280px JPEG）/ urlToDataUrl / friendlyGenError

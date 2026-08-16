@@ -519,7 +519,7 @@ try {
   await generateImageComfy({ prompt: 'p', aspectRatio: '1:1', imageSize: '1K' }, { ...comfySettings, comfyCheckpoint: '' });
   throw new Error('should have thrown');
 } catch (e) {
-  if (!e.message.includes('checkpoint')) throw e;
+  if (!e.message.includes('未配置 ComfyUI 模型')) throw e;
   console.log('--- comfy missing checkpoint guarded');
 }
 
@@ -532,6 +532,90 @@ try {
   console.log('--- comfy pending timeout, e.pending =', e.pending === true);
   if (e.pending !== true) throw e;
 }
+
+// 11b. Z-Image Turbo: dedicated graph (UNETLoader + lumina2 CLIP + Flux AE)
+const { isZImageModel, buildZImageWorkflow } = await import('../lib/comfy.js');
+
+if (!isZImageModel('z_image_turbo_bf16.safetensors')) throw new Error('isZImageModel plain broken');
+if (!isZImageModel('z-image\\z-image-turbo-fp8-e4m3fn.safetensors')) throw new Error('isZImageModel subfolder broken');
+if (isZImageModel('sd_xl_base_1.0.safetensors')) throw new Error('isZImageModel false positive');
+
+const zSettings = { ...comfySettings, comfyCheckpoint: 'z_image_turbo_bf16.safetensors' };
+const zwf = buildZImageWorkflow(
+  { prompt: 'a cat', width: 1024, height: 1024, clipName: 'qwen_3_4b.safetensors', vaeName: 'ae.safetensors' },
+  zSettings
+);
+if (zwf[1].class_type !== 'UNETLoader' || zwf[1].inputs.unet_name !== zSettings.comfyCheckpoint)
+  throw new Error('zimage unet loader broken');
+if (zwf[2].inputs.type !== 'lumina2' || zwf[2].inputs.clip_name !== 'qwen_3_4b.safetensors')
+  throw new Error('zimage clip loader broken');
+if (zwf[3].inputs.vae_name !== 'ae.safetensors') throw new Error('zimage vae loader broken');
+if (zwf[7].class_type !== 'EmptySD3LatentImage') throw new Error('zimage latent broken');
+// distilled model: fixed 9 steps / CFG 1, user comfySteps/comfyCfg ignored
+if (zwf[8].inputs.steps !== 9 || zwf[8].inputs.cfg !== 1 || zwf[8].inputs.scheduler !== 'simple')
+  throw new Error('zimage sampler params broken');
+console.log('--- zimage workflow graph ok');
+
+// full flow: aux models auto-resolved from object_info, graph submitted
+let zSubmitBody = null;
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.includes('/object_info/CLIPLoader')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ CLIPLoader: { input: { required: { clip_name: [['umt5-xxl-enc-bf16.safetensors', 'z-image\\qwen_3_4b.safetensors']] } } } })
+    };
+  }
+  if (url.includes('/object_info/VAELoader')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ VAELoader: { input: { required: { vae_name: [['wan_2.1_vae.safetensors', 'ae.safetensors']] } } } })
+    };
+  }
+  if (url.endsWith('/prompt')) {
+    zSubmitBody = JSON.parse(opts.body);
+    return { ok: true, status: 200, json: async () => ({ prompt_id: 'z_1' }) };
+  }
+  if (url.includes('/history/z_1')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        z_1: {
+          status: { completed: true, messages: [] },
+          outputs: { 10: { images: [{ filename: 'PromptLens_0001.png', subfolder: '', type: 'output' }] } }
+        }
+      })
+    };
+  }
+  if (url.includes('/view?')) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new TextEncoder().encode('img').buffer
+    };
+  }
+  throw new Error('unexpected zimage url: ' + url);
+};
+const zRes = await generateImageComfy({ prompt: 'a cat', aspectRatio: '1:1', imageSize: '1K' }, zSettings);
+const zGraph = zSubmitBody.prompt;
+if (zGraph[1].class_type !== 'UNETLoader') throw new Error('zimage flow did not use z graph');
+if (zGraph[2].inputs.clip_name !== 'z-image\\qwen_3_4b.safetensors') throw new Error('zimage clip auto-pick broken');
+if (zGraph[3].inputs.vae_name !== 'ae.safetensors') throw new Error('zimage vae auto-pick broken');
+if (zRes.images.length !== 1) throw new Error('zimage flow broken');
+console.log('--- zimage full flow ok (clip:', zGraph[2].inputs.clip_name, '| vae:', zGraph[3].inputs.vae_name + ')');
+
+// 11c. Seedream 5.0 Pro uses its enumerated size list
+const V5 = 'bytedance/seedream-v5.0-pro/text-to-image';
+if (atlasSize('1:1', '2K', V5) !== '2048*2048') throw new Error('v5 size 1:1 2K broken');
+if (atlasSize('3:4', '1K', V5) !== '1328*1776') throw new Error('v5 size 3:4 1.5K broken');
+if (atlasSize('16:9', '512', V5) !== '2048*1152') throw new Error('v5 size 16:9 1.5K broken');
+if (atlasSize('9:16', '4K', V5) !== '1530*2720') throw new Error('v5 size 9:16 caps at 2K tier');
+if (atlasSize('3:4', '2K') !== '1728*2304') throw new Error('v4 size mapping regressed');
+if (atlasModelFor(V5, true) !== 'bytedance/seedream-v5.0-pro/edit') throw new Error('v5 edit variant broken');
+console.log('--- seedream 5 size mapping ok');
 
 // 12. FlowAgent video: submit -> job id -> poll -> download mp4
 const { generateVideoFlow, pollFlowVideoJob } = await import('../lib/flowagent.js');

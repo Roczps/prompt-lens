@@ -8,7 +8,7 @@
 - **弹窗入口**：点击插件图标，粘贴 / 拖入 / 上传本地图片进行反推
 - **多维度画面解构**：图像类型 + 主体 / 姿势 / 环境 / 构图 / 光线 / 色彩 / 风格 / 细节 / 氛围逐项分析，附词卡与主色色卡，点击即复制
 - **中英双语提示词**：英文提示词可直接编辑后送去生图，附中文对照
-- **四生图渠道**：Gemini（Nano Banana 2）、GPT-Image（gpt-image-2，默认走 APIMart 异步协议，兼容 OpenAI 官方同步接口）、Seedream（Atlas Cloud 中转，带参考图时自动切 edit 变体）、本地 ComfyUI（开源模型，内置 txt2img 工作流，checkpoint/步数/CFG 可配置）
+- **四生图渠道**：Gemini（Nano Banana 2）、GPT-Image（gpt-image-2，默认走 APIMart 异步协议，兼容 OpenAI 官方同步接口）、Seedream（Atlas Cloud 中转，默认 Seedream 5.0 Pro，带参考图时自动切 edit 变体）、本地 ComfyUI（内置两套工作流：经典 checkpoint txt2img，以及 Z-Image Turbo 专属图——UNETLoader + Qwen3-4B 文本编码 + Flux AE，9 步 CFG 1.0，自动识别模型名切换）
 - **画布工作台**：侧边栏保持快速反推定位，点顶栏画布按钮在新标签页打开全屏工作台——左栏源图与提示词编辑，右侧勾选多个渠道后同一提示词并行发给所有渠道，结果按批次排成对比网格，每格独立重试/下载
 - **FlowAgent 视频**：接入本机 FlowAgent 服务（Google Flow 桥接，OpenAI 兼容接口），在画布中文生视频或以当前图为参考图生视频（4/6/8/10 秒），结果卡片内嵌播放器，可下载 mp4
 - **侧边栏生图**：选择画幅（1:1 到 21:9）与分辨率（512 / 1K / 2K / 4K，自动映射为各渠道支持的尺寸）
@@ -33,8 +33,8 @@
 | 反推提示词 | `gemini-flash-latest` | 稳定别名，自动指向最新 Flash 模型 |
 | 生成图片（Gemini 渠道） | `gemini-3.1-flash-image` | Nano Banana 2，支持 4K 与多种画幅 |
 | 生成图片（GPT-Image 渠道） | `gpt-image-2` | 默认 APIMart 异步协议（提交任务 → 轮询 → 下载）；切到 OpenAI 官方时走同步 `generations`/`edits` 接口 |
-| 生成图片（Seedream 渠道） | `bytedance/seedream-v4.5` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
-| 生成图片（ComfyUI 渠道） | 本地 checkpoint | 连本机 `http://127.0.0.1:8188`，设置页测试连通后可直接选模型 |
+| 生成图片（Seedream 渠道） | `bytedance/seedream-v5.0-pro/text-to-image` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；约 $0.045/张（1.5K 档，2K 满档 $0.09），edit 首张参考图免费、之后每张 +$0.003；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
+| 生成图片（ComfyUI 渠道） | `z_image_turbo_bf16.safetensors` | 连本机 `http://127.0.0.1:8188`，设置页测试连通后可选任意 checkpoint / diffusion model；Z-Image 系列自动用专属工作流 |
 | 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8001` 的 FlowAgent（Google Flow 桥接），无需 API Key |
 
 模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。
@@ -47,8 +47,8 @@ background.js          服务工作线程：任务调度、五渠道分发、断
 lib/
   gemini.js            Gemini API 封装（反推 + 生图 + 分镜策划 + Key 测试）
   openai.js            GPT-Image 渠道封装（generations / edits + APIMart 异步协议）
-  atlas.js             Seedream 渠道封装（Atlas Cloud 提交/轮询 + 尺寸预设）
-  comfy.js             本地 ComfyUI 渠道封装（txt2img 工作流 + history 轮询）
+  atlas.js             Seedream 渠道封装（Atlas Cloud 提交/轮询 + v4/v5 尺寸预设）
+  comfy.js             本地 ComfyUI 渠道封装（checkpoint txt2img + Z-Image 工作流 + history 轮询）
   flowagent.js         FlowAgent 视频封装（提交/轮询/health 检查）
   presets.js           组图内容预设库（风格锚 + 分镜节奏 + 平台规则）
   settings.js          设置读写与默认值

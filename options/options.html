@@ -84,8 +84,8 @@
       </label>
       <label>
         生图模型
-        <input type="text" id="atlasImageModel" placeholder="bytedance/seedream-v4.5" />
-        <span class="hint">带参考图时自动切换到对应的 /edit 变体</span>
+        <input type="text" id="atlasImageModel" placeholder="bytedance/seedream-v5.0-pro/text-to-image" />
+        <span class="hint">带参考图时自动切换到对应的 /edit 变体；Seedream 5.0 Pro 约 $0.045/张（2K 满档 $0.09）</span>
       </label>
     </section>
 
@@ -101,10 +101,10 @@
           <span id="test-comfy-result" class="hint"></span>
         </label>
         <label>
-          模型（checkpoint 文件名）
-          <input type="text" id="comfyCheckpoint" list="comfy-checkpoints" placeholder="sd_xl_base_1.0.safetensors" />
+          模型（checkpoint 或 diffusion model 文件名）
+          <input type="text" id="comfyCheckpoint" list="comfy-checkpoints" placeholder="z_image_turbo_bf16.safetensors" />
           <datalist id="comfy-checkpoints"></datalist>
-          <span class="hint">点"测试"连通后会自动列出可选模型</span>
+          <span class="hint">点"测试"连通后会自动列出可选模型；Z-Image 系列自动使用专属工作流（9 步 · CFG 1.0，忽略下方步数/CFG）</span>
         </label>
       </div>
       <div class="row">

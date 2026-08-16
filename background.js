@@ -13,7 +13,13 @@ const MAX_TASKS = 50;
 // api.openai.com. If the user never configured a key, move them to the new
 // APIMart default so the channel works out of the box.
 chrome.runtime.onInstalled.addListener(async () => {
-  const s = await chrome.storage.sync.get(['openaiApiKey', 'openaiBaseUrl', 'flowagentBaseUrl']);
+  const s = await chrome.storage.sync.get([
+    'openaiApiKey',
+    'openaiBaseUrl',
+    'flowagentBaseUrl',
+    'atlasImageModel',
+    'comfyCheckpoint'
+  ]);
   if (!s.openaiApiKey && s.openaiBaseUrl === 'https://api.openai.com/v1') {
     await chrome.storage.sync.set({ openaiBaseUrl: 'https://api.apimart.ai/v1' });
   }
@@ -21,6 +27,14 @@ chrome.runtime.onInstalled.addListener(async () => {
   // actually serves the OpenAI-compatible API on 8001.
   if (s.flowagentBaseUrl === 'http://127.0.0.1:8000') {
     await chrome.storage.sync.set({ flowagentBaseUrl: 'http://127.0.0.1:8001' });
+  }
+  // 1.0.0: Seedream default moved from v4.5 to 5.0 Pro; local ComfyUI uses
+  // Z-Image Turbo when nothing else was configured yet.
+  if (s.atlasImageModel === 'bytedance/seedream-v4.5') {
+    await chrome.storage.sync.set({ atlasImageModel: 'bytedance/seedream-v5.0-pro/text-to-image' });
+  }
+  if (!s.comfyCheckpoint) {
+    await chrome.storage.sync.set({ comfyCheckpoint: 'z_image_turbo_bf16.safetensors' });
   }
 });
 

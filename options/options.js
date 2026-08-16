@@ -92,17 +92,18 @@ $('btn-test-atlas').addEventListener('click', () =>
 );
 $('btn-test-comfy').addEventListener('click', () =>
   runTest('test-comfy-result', async () => {
-    const { checkpoints } = await testComfy($('comfyBaseUrl').value.trim());
+    const { checkpoints, diffusionModels } = await testComfy($('comfyBaseUrl').value.trim());
+    const all = [...checkpoints, ...diffusionModels];
     const list = $('comfy-checkpoints');
     list.innerHTML = '';
-    for (const name of checkpoints) {
+    for (const name of all) {
       const opt = document.createElement('option');
       opt.value = name;
       list.appendChild(opt);
     }
-    return checkpoints.length
-      ? `连接成功，发现 ${checkpoints.length} 个模型（点模型输入框可选）`
-      : '连接成功，但没有发现 checkpoint 模型';
+    return all.length
+      ? `连接成功，发现 ${all.length} 个模型（点模型输入框可选；Z-Image 系列自动用专属工作流）`
+      : '连接成功，但没有发现可用模型';
   })
 );
 $('btn-test-flow').addEventListener('click', () =>
