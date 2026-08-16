@@ -1,6 +1,9 @@
 import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter, planPostSet } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
+import { generateImageAtlas, pollAtlasPrediction } from './lib/atlas.js';
+import { generateImageComfy, pollComfyHistory } from './lib/comfy.js';
+import { generateVideoFlow, pollFlowVideoJob } from './lib/flowagent.js';
 import { getPreset, NEGATIVE_TAIL } from './lib/presets.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail, friendlyGenError } from './lib/util.js';
 
@@ -98,6 +101,7 @@ function makeGenRecord(params) {
     id: uid(),
     createdAt: Date.now(),
     status: 'running',
+    kind: params.kind || 'image',
     prompt: params.prompt,
     aspectRatio: params.aspectRatio,
     imageSize: params.imageSize,
@@ -111,8 +115,14 @@ function makeGenRecord(params) {
     setTotal: params.setTotal || 0,
     setPreset: params.setPreset || '',
     refGenId: params.refGenId || '',
+    compareId: params.compareId || '',
+    duration: params.duration || 0,
+    // Resumable remote task id (APIMart task / Atlas prediction / ComfyUI
+    // prompt / FlowAgent video job). apimartTaskId kept for old records.
+    remoteTaskId: '',
     apimartTaskId: '',
     images: [],
+    videos: [],
     error: null
   };
 }
@@ -147,8 +157,28 @@ async function executeGeneration(taskId, genId) {
       }
     }
 
+    // Persist the remote task id as soon as the provider hands one out, so
+    // the resume alarm can pick the poll back up if this worker dies.
+    const rememberRemoteTask = async (remoteTaskId) => {
+      await updateGen(taskId, genId, (g) => {
+        g.remoteTaskId = remoteTaskId;
+        if (gen.provider === 'openai') g.apimartTaskId = remoteTaskId;
+      });
+      await syncResumeAlarm();
+    };
+
     let result;
-    if (gen.provider === 'openai') {
+    if (gen.kind === 'video') {
+      result = await generateVideoFlow(
+        {
+          prompt: gen.prompt,
+          imageDataUrl: gen.refMode === 'source' ? charDataUrl || sourceDataUrl : '',
+          duration: gen.duration || settings.videoDuration,
+          onTaskSubmitted: rememberRemoteTask
+        },
+        settings
+      );
+    } else if (gen.provider === 'openai') {
       if (!settings.openaiApiKey) {
         throw new Error('未配置 GPT-Image 渠道的 API Key。请到设置页填写。');
       }
@@ -161,12 +191,34 @@ async function executeGeneration(taskId, genId) {
           styleRefDataUrl,
           charDataUrl,
           charDesc,
-          onTaskSubmitted: async (apimartTaskId) => {
-            await updateGen(taskId, genId, (g) => {
-              g.apimartTaskId = apimartTaskId;
-            });
-            await syncResumeAlarm();
-          }
+          onTaskSubmitted: rememberRemoteTask
+        },
+        settings
+      );
+    } else if (gen.provider === 'seedream') {
+      if (!settings.atlasApiKey) {
+        throw new Error('未配置 Seedream 渠道的 Atlas Cloud API Key。请到设置页填写。');
+      }
+      result = await generateImageAtlas(
+        {
+          prompt: gen.prompt,
+          aspectRatio: gen.aspectRatio,
+          imageSize: gen.imageSize,
+          poseRefDataUrl,
+          styleRefDataUrl,
+          charDataUrl,
+          charDesc,
+          onTaskSubmitted: rememberRemoteTask
+        },
+        settings
+      );
+    } else if (gen.provider === 'comfy') {
+      result = await generateImageComfy(
+        {
+          prompt: gen.prompt,
+          aspectRatio: gen.aspectRatio,
+          imageSize: gen.imageSize,
+          onTaskSubmitted: rememberRemoteTask
         },
         settings
       );
@@ -185,12 +237,15 @@ async function executeGeneration(taskId, genId) {
         settings
       );
     }
-    const { images, text } = result;
-    if (!images.length) {
+    const { images = [], videos = [], text } = result;
+    if (gen.kind === 'video') {
+      if (!videos.length) throw new Error('模型未返回视频');
+    } else if (!images.length) {
       throw new Error(text ? `模型未返回图片：${text.slice(0, 200)}` : '模型未返回图片');
     }
     await updateGen(taskId, genId, (g) => {
       g.images = images;
+      g.videos = videos;
       g.status = 'done';
     });
   } catch (e) {
@@ -240,11 +295,74 @@ async function retryGeneration({ taskId, genId, provider = '' }) {
     g.status = 'running';
     g.error = null;
     g.apimartTaskId = '';
+    g.remoteTaskId = '';
     g.images = [];
+    g.videos = [];
     g.createdAt = Date.now();
-    if (provider) g.provider = provider;
+    if (provider && g.kind !== 'video') g.provider = provider;
   });
   await executeGeneration(taskId, genId);
+}
+
+/**
+ * Same prompt fanned out to several providers at once (canvas comparison).
+ * Each provider gets its own gen record sharing one compareId.
+ */
+async function startCompareGeneration({
+  taskId,
+  prompt,
+  aspectRatio,
+  imageSize,
+  refMode = 'none',
+  characterId = '',
+  providers = []
+}) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  if (!task) throw new Error('任务不存在');
+  if (!providers.length) throw new Error('请至少选择一个生图渠道');
+
+  const char = await getCharacter(characterId);
+  const compareId = uid();
+  const gens = providers.map((provider) =>
+    makeGenRecord({
+      prompt,
+      aspectRatio,
+      imageSize,
+      refMode,
+      provider,
+      characterId: char ? characterId : '',
+      characterName: char?.name || '',
+      compareId
+    })
+  );
+  for (const gen of [...gens].reverse()) task.generations.unshift(gen);
+  await saveTask(task);
+
+  // Different backends, no shared rate limit: run them all in parallel.
+  await Promise.all(gens.map((gen) => executeGeneration(taskId, gen.id)));
+  return gens.length;
+}
+
+async function startVideoGeneration({ taskId, prompt, duration, withImage = false, refGenId = '' }) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  if (!task) throw new Error('任务不存在');
+
+  const settings = await getSettings();
+  const gen = makeGenRecord({
+    kind: 'video',
+    prompt,
+    aspectRatio: '',
+    imageSize: '',
+    refMode: withImage ? 'source' : 'none',
+    provider: 'flowagent',
+    duration: Number(duration) || settings.videoDuration,
+    refGenId: withImage ? refGenId : ''
+  });
+  task.generations.unshift(gen);
+  await saveTask(task);
+  await executeGeneration(taskId, gen.id);
 }
 
 async function runWithConcurrency(jobs, limit) {
@@ -349,14 +467,28 @@ async function startPostSet({
   return shots.length;
 }
 
-// ---- Recovery for in-flight APIMart tasks across service worker restarts ----
+// ---- Recovery for in-flight remote tasks across service worker restarts ----
+// APIMart / Atlas / ComfyUI / FlowAgent all persist a remote task id on the
+// gen record, so their polls can be resumed by the alarm below.
 
 const activePolls = new Set();
+
+function remoteTaskIdOf(gen) {
+  return gen.remoteTaskId || gen.apimartTaskId || '';
+}
+
+/** Pick the poll function matching the provider of a resumable gen. */
+function pollerFor(gen) {
+  if (gen.kind === 'video') return pollFlowVideoJob;
+  if (gen.provider === 'seedream') return pollAtlasPrediction;
+  if (gen.provider === 'comfy') return pollComfyHistory;
+  return pollApimartTask;
+}
 
 async function syncResumeAlarm() {
   const tasks = await getTasks();
   const hasPending = Object.values(tasks).some((t) =>
-    t.generations.some((g) => g.status === 'running' && g.apimartTaskId)
+    t.generations.some((g) => g.status === 'running' && remoteTaskIdOf(g))
   );
   if (hasPending) {
     chrome.alarms.create('plens-resume', { periodInMinutes: 0.5 });
@@ -371,13 +503,15 @@ async function resumePendingGenerations() {
   for (const task of Object.values(tasks)) {
     for (const gen of task.generations) {
       if (gen.status !== 'running') continue;
-      if (gen.apimartTaskId) {
+      const remoteId = remoteTaskIdOf(gen);
+      if (remoteId) {
         if (activePolls.has(gen.id)) continue;
         activePolls.add(gen.id);
-        pollApimartTask(gen.apimartTaskId, settings)
-          .then(({ images }) =>
+        pollerFor(gen)(remoteId, settings)
+          .then(({ images = [], videos = [] }) =>
             updateGen(task.id, gen.id, (g) => {
               g.images = images;
+              g.videos = videos;
               g.status = 'done';
             })
           )
@@ -494,6 +628,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         .then((count) => sendResponse({ ok: true, count }))
         .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
       return true;
+    }
+    case 'GENERATE_COMPARE': {
+      startCompareGeneration(msg.payload)
+        .then((count) => sendResponse({ ok: true, count }))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+      return true;
+    }
+    case 'GENERATE_VIDEO': {
+      startVideoGeneration(msg.payload).catch((e) => console.error('video generation failed:', e));
+      sendResponse({ ok: true });
+      return false;
     }
     case 'RESUME_PENDING': {
       resumePendingGenerations();

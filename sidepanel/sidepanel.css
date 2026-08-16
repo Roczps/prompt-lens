@@ -44,6 +44,8 @@ body {
   font-size: 14px;
 }
 
+.topbar-actions { display: flex; gap: 2px; }
+
 .icon-btn {
   background: none;
   border: none;
@@ -287,6 +289,13 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
   border-radius: 6px;
   display: block;
   margin-bottom: 8px;
+}
+.gen-video {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+  margin-bottom: 8px;
+  background: #000;
 }
 .gen-actions { display: flex; gap: 6px; }
 .retry-btn { margin-top: 8px; }

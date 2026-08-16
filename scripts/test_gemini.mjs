@@ -330,4 +330,284 @@ const passthrough = friendlyGenError(new Error('HTTP 500 boring error'));
 console.log('--- friendly safety error:', mapped.startsWith('内容安全审核未通过'), '| passthrough:', passthrough === 'HTTP 500 boring error');
 if (!mapped.includes('重试这张') || passthrough !== 'HTTP 500 boring error') throw new Error('friendlyGenError broken');
 
+// 10. Seedream via Atlas Cloud: size mapping, edit-variant switch, async flow
+const { generateImageAtlas, pollAtlasPrediction, atlasSize, atlasModelFor } = await import('../lib/atlas.js');
+
+if (atlasSize('3:4', '2K') !== '1728*2304') throw new Error('atlasSize 3:4 2K broken');
+if (atlasSize('1:1', '4K') !== '4096*4096') throw new Error('atlasSize 1:1 4K broken');
+if (atlasSize('4:5', '2K') !== '1728*2304') throw new Error('atlasSize closest-ratio fallback broken');
+if (atlasModelFor('bytedance/seedream-v4.5', false) !== 'bytedance/seedream-v4.5') throw new Error('atlasModelFor no-refs broken');
+if (atlasModelFor('bytedance/seedream-v4.5', true) !== 'bytedance/seedream-v4.5/edit') throw new Error('atlasModelFor edit broken');
+if (atlasModelFor('bytedance/seedream-v5.0-pro/text-to-image', true) !== 'bytedance/seedream-v5.0-pro/edit')
+  throw new Error('atlasModelFor t2i->edit broken');
+console.log('--- atlasSize/atlasModelFor ok');
+
+const atlasSettings = { atlasApiKey: 'atlas-test', atlasImageModel: 'bytedance/seedream-v4.5', pollIntervalMs: 1 };
+let atlasPollCount = 0;
+let atlasSubmitBody = null;
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.endsWith('/api/v1/model/generateImage')) {
+    atlasSubmitBody = JSON.parse(opts.body);
+    return { ok: true, status: 200, json: async () => ({ code: 200, data: { id: 'pred_1', status: 'processing' } }) };
+  }
+  if (url.includes('/api/v1/model/prediction/pred_1')) {
+    atlasPollCount++;
+    if (atlasPollCount < 2) return { ok: true, status: 200, json: async () => ({ data: { status: 'processing' } }) };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { status: 'completed', outputs: ['https://storage.atlascloud.ai/out.png'] } })
+    };
+  }
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => 'image/png' },
+    arrayBuffer: async () => new TextEncoder().encode('img').buffer
+  };
+};
+let atlasSubmittedId = '';
+const atlasRes = await generateImageAtlas(
+  {
+    prompt: 'p',
+    aspectRatio: '3:4',
+    imageSize: '2K',
+    charDataUrl: fakeDataUrl,
+    charDesc: 'd',
+    onTaskSubmitted: (id) => {
+      atlasSubmittedId = id;
+    }
+  },
+  atlasSettings
+);
+console.log(
+  '--- atlas submit model:',
+  atlasSubmitBody.model,
+  '| size:',
+  atlasSubmitBody.size,
+  '| refs:',
+  atlasSubmitBody.images?.length,
+  '| polls:',
+  atlasPollCount,
+  '| images:',
+  atlasRes.images.length
+);
+if (atlasSubmitBody.model !== 'bytedance/seedream-v4.5/edit') throw new Error('atlas edit model not used with refs');
+if (atlasSubmitBody.size !== '1728*2304' || atlasSubmittedId !== 'pred_1') throw new Error('atlas submit broken');
+if (atlasPollCount < 2 || !atlasRes.images[0].startsWith('data:image/png')) throw new Error('atlas poll broken');
+
+// failed prediction surfaces its error
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.endsWith('/api/v1/model/generateImage')) {
+    return { ok: true, status: 200, json: async () => ({ data: { id: 'pred_2' } }) };
+  }
+  return { ok: true, status: 200, json: async () => ({ data: { status: 'failed', error: '配额不足' } }) };
+};
+try {
+  await generateImageAtlas({ prompt: 'p', aspectRatio: '1:1', imageSize: '2K' }, atlasSettings);
+  throw new Error('should have thrown');
+} catch (e) {
+  console.log('--- atlas failed-task error surfaced:', e.message);
+  if (!e.message.includes('配额不足')) throw e;
+}
+
+// pending timeout keeps e.pending
+globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ data: { status: 'processing' } }) });
+try {
+  await pollAtlasPrediction('pred_3', atlasSettings, { deadlineMs: 5 });
+  throw new Error('should have thrown pending');
+} catch (e) {
+  console.log('--- atlas pending timeout, e.pending =', e.pending === true);
+  if (e.pending !== true) throw e;
+}
+
+// 11. local ComfyUI: latent size, workflow graph, submit -> history -> /view
+const { generateImageComfy, pollComfyHistory, comfySize, buildComfyWorkflow } = await import('../lib/comfy.js');
+
+const cs = comfySize('16:9', '1K');
+if (cs.width !== 1024 || cs.height % 8 !== 0 || cs.height >= cs.width) throw new Error('comfySize 16:9 broken');
+const csP = comfySize('3:4', '2K');
+if (csP.height !== 1536 || csP.width % 8 !== 0 || csP.width >= csP.height) throw new Error('comfySize portrait broken');
+console.log('--- comfySize 16:9 1K ->', `${cs.width}x${cs.height}`, '| 3:4 2K ->', `${csP.width}x${csP.height}`);
+
+const comfySettings = {
+  comfyBaseUrl: 'http://127.0.0.1:8188',
+  comfyCheckpoint: 'sd_xl_base_1.0.safetensors',
+  comfySteps: 30,
+  comfyCfg: 6,
+  pollIntervalMs: 1
+};
+const wf = buildComfyWorkflow({ prompt: 'a cat', width: 1024, height: 1024 }, comfySettings);
+if (wf[4].inputs.ckpt_name !== comfySettings.comfyCheckpoint) throw new Error('workflow checkpoint broken');
+if (wf[3].inputs.steps !== 30 || wf[3].inputs.cfg !== 6) throw new Error('workflow sampler params broken');
+if (wf[6].inputs.text !== 'a cat' || !wf[7].inputs.text) throw new Error('workflow prompts broken');
+
+let comfyPollCount = 0;
+let comfySubmitBody = null;
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.endsWith('/prompt')) {
+    comfySubmitBody = JSON.parse(opts.body);
+    return { ok: true, status: 200, json: async () => ({ prompt_id: 'comfy_1' }) };
+  }
+  if (url.includes('/history/comfy_1')) {
+    comfyPollCount++;
+    if (comfyPollCount < 2) return { ok: true, status: 200, json: async () => ({}) };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        comfy_1: {
+          status: { completed: true, messages: [] },
+          outputs: { 9: { images: [{ filename: 'PromptLens_0001.png', subfolder: '', type: 'output' }] } }
+        }
+      })
+    };
+  }
+  if (url.includes('/view?')) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new TextEncoder().encode('img').buffer
+    };
+  }
+  throw new Error('unexpected comfy url: ' + url);
+};
+let comfySubmittedId = '';
+const comfyRes = await generateImageComfy(
+  {
+    prompt: 'a cat',
+    aspectRatio: '1:1',
+    imageSize: '1K',
+    onTaskSubmitted: (id) => {
+      comfySubmittedId = id;
+    }
+  },
+  comfySettings
+);
+console.log(
+  '--- comfy submit graph nodes:',
+  Object.keys(comfySubmitBody.prompt).length,
+  '| polls:',
+  comfyPollCount,
+  '| images:',
+  comfyRes.images.length
+);
+if (comfySubmittedId !== 'comfy_1' || comfyRes.images.length !== 1) throw new Error('comfy flow broken');
+
+// execution error propagates the node's message
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.endsWith('/prompt')) return { ok: true, status: 200, json: async () => ({ prompt_id: 'comfy_2' }) };
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      comfy_2: { status: { completed: false, messages: [['execution_error', { exception_message: '显存不足' }]] }, outputs: {} }
+    })
+  };
+};
+try {
+  await generateImageComfy({ prompt: 'p', aspectRatio: '1:1', imageSize: '1K' }, comfySettings);
+  throw new Error('should have thrown');
+} catch (e) {
+  console.log('--- comfy execution error surfaced:', e.message);
+  if (!e.message.includes('显存不足')) throw e;
+}
+
+// missing checkpoint is a friendly config error
+try {
+  await generateImageComfy({ prompt: 'p', aspectRatio: '1:1', imageSize: '1K' }, { ...comfySettings, comfyCheckpoint: '' });
+  throw new Error('should have thrown');
+} catch (e) {
+  if (!e.message.includes('checkpoint')) throw e;
+  console.log('--- comfy missing checkpoint guarded');
+}
+
+// pending timeout keeps e.pending
+globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+try {
+  await pollComfyHistory('comfy_3', comfySettings, { deadlineMs: 5 });
+  throw new Error('should have thrown pending');
+} catch (e) {
+  console.log('--- comfy pending timeout, e.pending =', e.pending === true);
+  if (e.pending !== true) throw e;
+}
+
+// 12. FlowAgent video: submit -> job id -> poll -> download mp4
+const { generateVideoFlow, pollFlowVideoJob } = await import('../lib/flowagent.js');
+
+const flowSettings = { flowagentBaseUrl: 'http://127.0.0.1:8000', pollIntervalMs: 1 };
+let flowPollCount = 0;
+let flowSubmitBody = null;
+globalThis.fetch = async (url, opts = {}) => {
+  if (url.endsWith('/v1/videos/generations') && opts.method === 'POST') {
+    flowSubmitBody = JSON.parse(opts.body);
+    return { ok: true, status: 200, json: async () => ({ id: 'job_1', status: 'queued' }) };
+  }
+  if (url.includes('/v1/videos/generations/job_1')) {
+    flowPollCount++;
+    if (flowPollCount < 2) return { ok: true, status: 200, json: async () => ({ id: 'job_1', status: 'processing' }) };
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'job_1', status: 'succeeded', video_url: '/download/out.mp4' })
+    };
+  }
+  if (url.includes('/download/out.mp4')) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'video/mp4' },
+      arrayBuffer: async () => new TextEncoder().encode('vid').buffer
+    };
+  }
+  throw new Error('unexpected flow url: ' + url);
+};
+let flowSubmittedId = '';
+const flowRes = await generateVideoFlow(
+  {
+    prompt: 'a cinematic shot',
+    imageDataUrl: fakeDataUrl,
+    duration: 8,
+    onTaskSubmitted: (id) => {
+      flowSubmittedId = id;
+    }
+  },
+  flowSettings
+);
+console.log(
+  '--- flow submit duration:',
+  flowSubmitBody.duration,
+  '| has image:',
+  !!flowSubmitBody.image,
+  '| polls:',
+  flowPollCount,
+  '| videos:',
+  flowRes.videos.length
+);
+if (flowSubmittedId !== 'job_1' || !flowRes.videos[0].startsWith('data:video/mp4')) throw new Error('flow video broken');
+
+// failed job surfaces error
+globalThis.fetch = async (url, opts = {}) => {
+  if (opts.method === 'POST') return { ok: true, status: 200, json: async () => ({ id: 'job_2' }) };
+  return { ok: true, status: 200, json: async () => ({ id: 'job_2', status: 'failed', error: 'credits 不足' }) };
+};
+try {
+  await generateVideoFlow({ prompt: 'p' }, flowSettings);
+  throw new Error('should have thrown');
+} catch (e) {
+  console.log('--- flow failed-job error surfaced:', e.message);
+  if (!e.message.includes('credits')) throw e;
+}
+
+// pending timeout keeps e.pending
+globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ status: 'processing' }) });
+try {
+  await pollFlowVideoJob('job_3', flowSettings, { deadlineMs: 5 });
+  throw new Error('should have thrown pending');
+} catch (e) {
+  console.log('--- flow pending timeout, e.pending =', e.pending === true);
+  if (e.pending !== true) throw e;
+}
+
 console.log('ALL OK');

@@ -72,6 +72,86 @@
     </section>
 
     <section class="card">
+      <h2>Seedream 渠道（Atlas Cloud，可选）</h2>
+      <label>
+        API Key
+        <div class="key-row">
+          <input type="password" id="atlasApiKey" placeholder="atlas-..." autocomplete="off" />
+          <button id="btn-test-atlas" class="chip-btn">测试</button>
+        </div>
+        <span class="hint">在 <a href="https://www.atlascloud.ai/console/api-keys" target="_blank" rel="noreferrer">Atlas Cloud 控制台</a> 创建；用于 Seedream 生图</span>
+        <span id="test-atlas-result" class="hint"></span>
+      </label>
+      <label>
+        生图模型
+        <input type="text" id="atlasImageModel" placeholder="bytedance/seedream-v4.5" />
+        <span class="hint">带参考图时自动切换到对应的 /edit 变体</span>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>本地 ComfyUI（可选）</h2>
+      <div class="row">
+        <label>
+          服务地址
+          <div class="key-row">
+            <input type="text" id="comfyBaseUrl" placeholder="http://127.0.0.1:8188" />
+            <button id="btn-test-comfy" class="chip-btn">测试</button>
+          </div>
+          <span id="test-comfy-result" class="hint"></span>
+        </label>
+        <label>
+          模型（checkpoint 文件名）
+          <input type="text" id="comfyCheckpoint" list="comfy-checkpoints" placeholder="sd_xl_base_1.0.safetensors" />
+          <datalist id="comfy-checkpoints"></datalist>
+          <span class="hint">点"测试"连通后会自动列出可选模型</span>
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          采样步数
+          <input type="number" id="comfySteps" min="1" max="150" step="1" />
+        </label>
+        <label>
+          CFG
+          <input type="number" id="comfyCfg" min="1" max="30" step="0.5" />
+        </label>
+      </div>
+      <label>
+        负面提示词
+        <input type="text" id="comfyNegative" placeholder="留空使用内置默认负面词" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>FlowAgent 视频（可选）</h2>
+      <div class="row">
+        <label>
+          服务地址
+          <div class="key-row">
+            <input type="text" id="flowagentBaseUrl" placeholder="http://127.0.0.1:8000" />
+            <button id="btn-test-flow" class="chip-btn">测试</button>
+          </div>
+          <span class="hint">本机运行的 FlowAgent（Google Flow 桥接）服务</span>
+          <span id="test-flow-result" class="hint"></span>
+        </label>
+        <label>
+          视频模型（可选）
+          <input type="text" id="flowagentModel" placeholder="留空用服务默认模型" />
+        </label>
+      </div>
+      <label>
+        默认视频时长
+        <select id="videoDuration">
+          <option value="4">4 秒</option>
+          <option value="6">6 秒</option>
+          <option value="8">8 秒</option>
+          <option value="10">10 秒</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="card">
       <h2>生成默认值</h2>
       <div class="row">
         <label>
@@ -79,6 +159,8 @@
           <select id="imageProvider">
             <option value="gemini">Gemini</option>
             <option value="openai">GPT-Image</option>
+            <option value="seedream">Seedream</option>
+            <option value="comfy">ComfyUI（本地）</option>
           </select>
         </label>
         <label>

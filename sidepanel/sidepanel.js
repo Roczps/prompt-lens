@@ -37,8 +37,14 @@ let renderedTaskId = null;
 let renderedStamp = '';
 let renderedResultFor = null;
 
-const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '' };
-const PROVIDER_LABELS = { gemini: 'Gemini', openai: 'GPT-Image' };
+const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '', source: '图生视频' };
+const PROVIDER_LABELS = {
+  gemini: 'Gemini',
+  openai: 'GPT-Image',
+  seedream: 'Seedream',
+  comfy: 'ComfyUI',
+  flowagent: 'FlowAgent 视频'
+};
 
 async function loadState() {
   const { tasks = {}, activeTaskId = null } = await chrome.storage.local.get(['tasks', 'activeTaskId']);
@@ -219,6 +225,29 @@ function renderGenerations(task) {
       item.appendChild(retry);
     }
 
+    (gen.videos || []).forEach((dataUrl, i) => {
+      const video = document.createElement('video');
+      video.src = dataUrl;
+      video.controls = true;
+      video.loop = true;
+      video.className = 'gen-video';
+      item.appendChild(video);
+
+      const actions = document.createElement('div');
+      actions.className = 'gen-actions';
+      const dl = document.createElement('button');
+      dl.className = 'chip-btn';
+      dl.textContent = '下载视频';
+      dl.addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `prompt-lens-${gen.id}${gen.videos.length > 1 ? '-' + (i + 1) : ''}.mp4`;
+        a.click();
+      });
+      actions.appendChild(dl);
+      item.appendChild(actions);
+    });
+
     gen.images.forEach((dataUrl, i) => {
       const img = document.createElement('img');
       img.src = dataUrl;
@@ -396,6 +425,12 @@ async function init() {
   $('gen-provider').value = settings.imageProvider || 'gemini';
 
   $('btn-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+  $('btn-canvas').addEventListener('click', () => {
+    const task = activeTask();
+    const url = chrome.runtime.getURL(`canvas/canvas.html${task ? `?t=${task.id}` : ''}`);
+    chrome.tabs.create({ url });
+  });
 
   $('btn-copy-en').addEventListener('click', () => {
     navigator.clipboard.writeText($('prompt-en').value);

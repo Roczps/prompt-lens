@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Prompt Lens",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "反推网页图片的提示词，并用 Gemini 直接生成新图。自用版，灵感来自 Viko。",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "unlimitedStorage", "sidePanel", "downloads", "alarms"],

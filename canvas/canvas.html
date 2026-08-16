@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prompt Lens 画布</title>
+  <link rel="stylesheet" href="canvas.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="24" height="24" />
+      <span>Prompt Lens 画布</span>
+    </div>
+    <div class="head-actions">
+      <button id="btn-upload" class="chip-btn">上传 / 粘贴图片</button>
+      <input type="file" id="file-input" accept="image/*" hidden />
+      <button id="btn-settings" class="chip-btn">设置</button>
+    </div>
+  </header>
+
+  <div id="task-strip" class="task-strip"></div>
+
+  <main>
+    <section id="empty-state" class="empty hidden">
+      <p>还没有任务。点击右上角"上传 / 粘贴图片"，或在网页上用悬浮球反推一张图。</p>
+    </section>
+
+    <div id="workspace" class="workspace hidden">
+      <aside class="left">
+        <div class="card">
+          <img id="source-img" class="source-img" alt="参考图" title="点击查看大图" />
+          <div class="source-meta">
+            <span id="task-status" class="status"></span>
+            <a id="source-link" href="#" target="_blank" rel="noreferrer" class="dim link hidden">来源页面</a>
+          </div>
+          <div id="task-error" class="error hidden"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>提示词</h2>
+            <div class="head-actions">
+              <button id="btn-copy-en" class="chip-btn">复制</button>
+              <button id="btn-reanalyze" class="chip-btn" title="用当前图重新反推（新建一个任务）">重新反推</button>
+            </div>
+          </div>
+          <textarea id="prompt-en" rows="12" spellcheck="false" placeholder="反推结果会出现在这里，也可以手动编辑"></textarea>
+          <details class="zh-details">
+            <summary>中文对照</summary>
+            <p id="prompt-zh" class="zh-text"></p>
+          </details>
+          <div id="palette" class="palette"></div>
+        </div>
+      </aside>
+
+      <section class="right">
+        <div class="card">
+          <div class="card-head"><h2>多模型生图 · 对比</h2></div>
+          <div class="provider-checks">
+            <label class="check"><input type="checkbox" class="prov" value="gemini" checked /> Gemini</label>
+            <label class="check"><input type="checkbox" class="prov" value="openai" /> GPT-Image</label>
+            <label class="check"><input type="checkbox" class="prov" value="seedream" /> Seedream</label>
+            <label class="check"><input type="checkbox" class="prov" value="comfy" /> ComfyUI（本地）</label>
+          </div>
+          <div class="gen-controls">
+            <label>画幅
+              <select id="gen-aspect">
+                <option value="1:1">1:1</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="3:2">3:2</option>
+                <option value="2:3">2:3</option>
+                <option value="21:9">21:9</option>
+              </select>
+            </label>
+            <label>分辨率
+              <select id="gen-size">
+                <option value="512">512</option>
+                <option value="1K">1K</option>
+                <option value="2K">2K</option>
+                <option value="4K">4K</option>
+              </select>
+            </label>
+            <label>参考模式
+              <select id="gen-refmode">
+                <option value="pose">姿势复刻</option>
+                <option value="style">风格参考</option>
+                <option value="none">无参考</option>
+              </select>
+            </label>
+            <label>角色替换
+              <select id="gen-character">
+                <option value="">不替换</option>
+              </select>
+            </label>
+          </div>
+          <p class="dim hint-line">勾选多个渠道时同一提示词会并行发给所有渠道，结果排成一行方便对比。ComfyUI 渠道暂不支持参考图/角色替换（纯提示词生图）。</p>
+          <button id="btn-generate" class="primary">生成</button>
+          <div id="gen-error" class="error hidden"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>FlowAgent 视频</h2></div>
+          <textarea id="video-prompt" rows="3" spellcheck="false" placeholder="视频提示词（留空则使用左侧图片提示词）"></textarea>
+          <div class="gen-controls">
+            <label>时长
+              <select id="video-duration">
+                <option value="4">4 秒</option>
+                <option value="6">6 秒</option>
+                <option value="8">8 秒</option>
+                <option value="10">10 秒</option>
+              </select>
+            </label>
+            <label class="check with-image-check">
+              <input type="checkbox" id="video-with-image" checked />
+              以当前图为参考（图生视频）
+            </label>
+          </div>
+          <button id="btn-generate-video" class="primary">生成视频</button>
+          <div id="video-error" class="error hidden"></div>
+        </div>
+
+        <div id="results"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="canvas.js" type="module"></script>
+</body>
+</html>
