@@ -110,6 +110,7 @@ function makeGenRecord(params) {
     setIndex: params.setIndex || 0,
     setTotal: params.setTotal || 0,
     setPreset: params.setPreset || '',
+    refGenId: params.refGenId || '',
     apimartTaskId: '',
     images: [],
     error: null
@@ -126,11 +127,25 @@ async function executeGeneration(taskId, genId) {
   try {
     const settings = await getSettings();
     const char = await getCharacter(gen.characterId);
-    const charDataUrl = char?.dataUrl || '';
-    const charDesc = char?.desc || '';
+    let charDataUrl = char?.dataUrl || '';
+    let charDesc = char?.desc || '';
     const sourceDataUrl = task.source?.dataUrl || '';
-    const poseRefDataUrl = gen.refMode === 'pose' ? sourceDataUrl : '';
-    const styleRefDataUrl = gen.refMode === 'style' ? sourceDataUrl : '';
+    let poseRefDataUrl = gen.refMode === 'pose' ? sourceDataUrl : '';
+    let styleRefDataUrl = gen.refMode === 'style' ? sourceDataUrl : '';
+
+    // Set shots anchored on an earlier generation (e.g. character-swapped
+    // image): that image already carries the right face, wardrobe and style,
+    // so it becomes the character reference. Drop the card's own image/desc --
+    // its outfit usually differs and would fight the anchor.
+    if (gen.refGenId) {
+      const anchor = task.generations.find((g) => g.id === gen.refGenId && g.images?.[0]);
+      if (anchor) {
+        charDataUrl = anchor.images[0];
+        charDesc = '';
+        poseRefDataUrl = '';
+        styleRefDataUrl = '';
+      }
+    }
 
     let result;
     if (gen.provider === 'openai') {
@@ -250,7 +265,8 @@ async function startPostSet({
   characterId = '',
   provider = '',
   imageSize,
-  presetId = ''
+  presetId = '',
+  anchorGenId = ''
 }) {
   const tasks = await getTasks();
   const task = tasks[taskId];
@@ -263,18 +279,37 @@ async function startPostSet({
   const char = await getCharacter(characterId);
   const preset = getPreset(presetId);
   const useProvider = provider || settings.imageProvider || 'gemini';
-  const inline = dataUrlToInlinePart(task.source.dataUrl).inlineData;
+
+  // Anchor the set on a character-swapped generation when one exists: the
+  // swapped image carries the actual person + wardrobe + styling the user
+  // approved, which the source image and card description cannot. Explicit
+  // anchorGenId wins; otherwise pick the newest done generation made with the
+  // selected character (generations are stored newest-first).
+  let anchorGen = null;
+  if (anchorGenId) {
+    anchorGen = task.generations.find((g) => g.id === anchorGenId && g.images?.[0]) || null;
+  }
+  if (!anchorGen && characterId) {
+    anchorGen =
+      task.generations.find(
+        (g) => g.status === 'done' && g.characterId === characterId && g.images?.[0]
+      ) || null;
+  }
+  const anchorDataUrl = anchorGen ? anchorGen.images[0] : task.source.dataUrl;
+
+  const inline = dataUrlToInlinePart(anchorDataUrl).inlineData;
   const shots = await planPostSet(
     {
       base64: inline.data,
       mimeType: inline.mimeType,
-      stylePrompt: task.result?.prompt || '',
-      charDesc: char?.desc || '',
+      stylePrompt: anchorGen ? '' : task.result?.prompt || '',
+      charDesc: anchorGen ? '' : char?.desc || '',
       platform,
       count: Number(count) || 4,
       preset,
       negativeTail: NEGATIVE_TAIL,
-      provider: useProvider
+      provider: useProvider,
+      anchorIsCharacter: !!anchorGen
     },
     settings
   );
@@ -285,7 +320,7 @@ async function startPostSet({
       prompt: shot.prompt,
       aspectRatio,
       imageSize,
-      refMode: 'style',
+      refMode: anchorGen ? 'none' : 'style',
       provider: useProvider,
       characterId: char ? characterId : '',
       characterName: char?.name || '',
@@ -293,7 +328,8 @@ async function startPostSet({
       setLabel: shot.label,
       setIndex: i + 1,
       setTotal: shots.length,
-      setPreset: preset?.name || ''
+      setPreset: preset?.name || '',
+      refGenId: anchorGen?.id || ''
     })
   );
 

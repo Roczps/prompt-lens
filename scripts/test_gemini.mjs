@@ -300,6 +300,30 @@ const noConstraintForGemini = !planInstruction.includes('内容安全硬约束')
 console.log('--- openai dress constraint:', dressConstraint, '| gemini unconstrained:', noConstraintForGemini);
 if (!dressConstraint || !noConstraintForGemini) throw new Error('dress constraint injection broken');
 
+// 9. anchored planning: a character-swapped generation as reference means the
+// image itself defines appearance AND wardrobe; the card description must not
+// be injected alongside it.
+await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', platform: 'ins', count: 1, charDesc: '短发', anchorIsCharacter: true },
+  settings
+);
+const CARD_DESC_LINE = '角色外貌锚定（每张 prompt 都必须原样包含这些特征）';
+const anchoredMode =
+  planInstruction.includes('参考图中的人物就是这个角色本人') && !planInstruction.includes(CARD_DESC_LINE);
+await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', platform: 'ins', count: 1, charDesc: '短发' },
+  settings
+);
+const cardMode =
+  planInstruction.includes(CARD_DESC_LINE) && !planInstruction.includes('参考图中的人物就是这个角色本人');
+await planPostSet(
+  { base64: 'x', mimeType: 'image/jpeg', platform: 'xhs', count: 1, preset, anchorIsCharacter: true },
+  settings
+);
+const anchoredPreset = planInstruction.includes('外貌与服装穿搭');
+console.log('--- anchored plan:', anchoredMode, '| card plan:', cardMode, '| anchored preset wardrobe:', anchoredPreset);
+if (!anchoredMode || !cardMode || !anchoredPreset) throw new Error('anchored planning broken');
+
 const { friendlyGenError } = await import('../lib/util.js');
 const mapped = friendlyGenError(new Error('Your prompt or input was rejected by the content safety system.'));
 const passthrough = friendlyGenError(new Error('HTTP 500 boring error'));
