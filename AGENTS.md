@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.0.1**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.0.2**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -47,6 +47,7 @@ scripts/          test_gemini.mjs（离线测试）、gen_icons.py（图标生�
 4. **GPT-Image 内容审核比 Gemini 严格得多**：写实人物的裸露/内衣描述会被拒（"rejected by the content safety system"）。已做：planPostSet 在 provider==='openai' 时注入着装硬约束；friendlyGenError 把审核错误翻译成带建议的中文；失败 gen 可用面板当前渠道重试（RETRY_GEN 带 provider 覆盖）。
 5. **Gemini 生图 API 的 responseFormat 字段**：部分模型版本报 400，callGemini 有降级重试逻辑（responseFormat → imageConfig → 移除）；区分 schema 错误和语义错误（isSchemaError），别把真实错误吞了。
 6. APIMart 的 `/v1/images/generations` 用 `size` 传画幅比例字符串（如 "3:4"）、`resolution` 传 "1k/2k/4k"、参考图用 `image_urls`（dataURL 数组）；响应是 `data[0].task_id`，轮询 `/v1/tasks/{id}`。
+7. **ComfyUI 会 403 拒绝带 chrome-extension:// Origin 的请求**（Origin/Host 校验中间件），而浏览器给插件 fetch 强制加 Origin 头且代码无法去掉。解法：background.js 用 declarativeNetRequest 动态规则（syncLocalOriginRules，规则 id 101/102）把发往 ComfyUI / FlowAgent 本机地址的请求的 Origin 头剥掉，设置页改地址时自动更新规则。
 
 ## 生图流程（background.js）
 

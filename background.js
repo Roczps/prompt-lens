@@ -572,6 +572,47 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'plens-resume') resumePendingGenerations();
 });
 
+// ComfyUI's security middleware rejects any request whose Origin header does
+// not match its Host with HTTP 403, and the browser always stamps
+// chrome-extension://... on extension fetches (it cannot be unset in code).
+// Strip the Origin header at the network layer for the local backends.
+const DNR_RULE_COMFY = 101;
+const DNR_RULE_FLOW = 102;
+
+async function syncLocalOriginRules() {
+  const settings = await getSettings();
+  const rules = [
+    { id: DNR_RULE_COMFY, base: settings.comfyBaseUrl || 'http://127.0.0.1:8188' },
+    { id: DNR_RULE_FLOW, base: settings.flowagentBaseUrl || 'http://127.0.0.1:8001' }
+  ].map(({ id, base }) => ({
+    id,
+    priority: 1,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [{ header: 'Origin', operation: 'remove' }]
+    },
+    condition: {
+      urlFilter: base.replace(/\/+$/, '') + '/',
+      resourceTypes: ['xmlhttprequest']
+    }
+  }));
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: rules.map((r) => r.id),
+      addRules: rules
+    });
+  } catch (e) {
+    console.error('sync local origin rules failed:', e);
+  }
+}
+
+syncLocalOriginRules();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && (changes.comfyBaseUrl || changes.flowagentBaseUrl)) {
+    syncLocalOriginRules();
+  }
+});
+
 // Runs on every service worker start-up (including after Chrome reclaims it).
 resumePendingGenerations();
 
