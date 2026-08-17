@@ -1,4 +1,5 @@
 import { getSettings } from '../lib/settings.js';
+import { POST_PRESETS, getPreset } from '../lib/presets.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -104,7 +105,8 @@ function render() {
     task.id,
     task.status,
     task.error,
-    task.generations.map((g) => [g.id, g.status])
+    task.generations.map((g) => [g.id, g.status]),
+    Object.entries(task.postCopies || {}).map(([id, c]) => [id, c.status])
   ]);
   if (task.id === renderedTaskId && stamp === renderedStamp) return;
   renderedTaskId = task.id;
@@ -238,8 +240,102 @@ function renderResults(task) {
     cells.className = 'cells';
     for (const gen of gens) cells.appendChild(renderCell(task, gen));
     batch.appendChild(cells);
+
+    if (first.setId) {
+      const copyBlock = renderCopyBlock(task, first.setId);
+      if (copyBlock) batch.appendChild(copyBlock);
+    }
     box.appendChild(batch);
   }
+}
+
+/** Caption copy attached to a post set (title / body / hashtags). */
+function renderCopyBlock(task, setId) {
+  const copy = task.postCopies?.[setId];
+  if (!copy) return null;
+  const box = document.createElement('div');
+  box.className = 'copy-block';
+
+  const head = document.createElement('div');
+  head.className = 'copy-head';
+  const label = document.createElement('span');
+  label.className = 'copy-label';
+  label.textContent = copy.platform === 'ins' ? 'Instagram 文案' : '小红书文案';
+  head.appendChild(label);
+
+  const regen = document.createElement('button');
+  regen.className = 'chip-btn';
+  regen.textContent = copy.status === 'running' ? '生成中…' : '重新生成文案';
+  regen.disabled = copy.status === 'running';
+  regen.addEventListener('click', async () => {
+    regen.disabled = true;
+    const res = await sendToBackground({ type: 'REGENERATE_COPY', payload: { taskId: task.id, setId } });
+    if (res && !res.ok) {
+      regen.disabled = false;
+      regen.textContent = res.error;
+    }
+  });
+  head.appendChild(regen);
+  box.appendChild(head);
+
+  if (copy.status === 'running') {
+    const ph = document.createElement('div');
+    ph.className = 'dim';
+    ph.textContent = '文案生成中…';
+    box.appendChild(ph);
+    return box;
+  }
+  if (copy.status === 'error') {
+    const err = document.createElement('div');
+    err.className = 'error';
+    err.textContent = copy.error || '文案生成失败';
+    box.appendChild(err);
+    return box;
+  }
+
+  const tagText = (copy.tags || []).map((t) => `#${t}`).join(' ');
+  if (copy.title) {
+    const title = document.createElement('div');
+    title.className = 'copy-title';
+    title.textContent = copy.title;
+    box.appendChild(title);
+  }
+  if (copy.body) {
+    const body = document.createElement('div');
+    body.className = 'copy-body';
+    body.textContent = copy.body;
+    box.appendChild(body);
+  }
+  if (tagText) {
+    const tags = document.createElement('div');
+    tags.className = 'copy-tags';
+    tags.textContent = tagText;
+    box.appendChild(tags);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'cell-actions';
+  const copyAll = document.createElement('button');
+  copyAll.className = 'chip-btn';
+  copyAll.textContent = '复制全部文案';
+  copyAll.addEventListener('click', () => {
+    const full = [copy.title, copy.body, tagText].filter(Boolean).join('\n\n');
+    navigator.clipboard.writeText(full);
+    flashButton(copyAll);
+  });
+  actions.appendChild(copyAll);
+  if (copy.title) {
+    const copyTitle = document.createElement('button');
+    copyTitle.className = 'chip-btn';
+    copyTitle.textContent = '复制标题';
+    copyTitle.addEventListener('click', () => {
+      navigator.clipboard.writeText(copy.title);
+      flashButton(copyTitle);
+    });
+    actions.appendChild(copyTitle);
+  }
+  box.appendChild(actions);
+  return box;
 }
 
 function renderCell(task, gen) {
@@ -378,6 +474,35 @@ async function generateCompare() {
   }
 }
 
+async function generateSet() {
+  showError('set-error', '');
+  const task = activeTask();
+  if (!task) return;
+  const [platform, aspectRatio] = $('set-platform').value.split('|');
+  const btn = $('btn-generate-set');
+  btn.disabled = true;
+  btn.textContent = 'AI 策划分镜中…';
+  try {
+    const res = await sendToBackground({
+      type: 'GENERATE_SET',
+      payload: {
+        taskId: task.id,
+        platform,
+        aspectRatio,
+        count: Number($('set-count').value),
+        imageSize: $('gen-size').value,
+        provider: $('set-provider').value,
+        characterId: $('gen-character').value,
+        presetId: $('set-preset').value
+      }
+    });
+    if (res && !res.ok) showError('set-error', res.error);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '策划并生成组图 + 文案';
+  }
+}
+
 async function generateVideo() {
   showError('video-error', '');
   const task = activeTask();
@@ -450,7 +575,21 @@ async function init() {
     if (task?.source?.dataUrl) openViewer(task.id, { src: '1' });
   });
 
+  const presetSelect = $('set-preset');
+  for (const preset of POST_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = preset.id;
+    opt.textContent = preset.name;
+    presetSelect.appendChild(opt);
+  }
+  presetSelect.addEventListener('change', () => {
+    const preset = getPreset(presetSelect.value);
+    if (preset) $('set-platform').value = preset.platformAspect;
+  });
+  $('set-provider').value = settings.imageProvider || 'gemini';
+
   $('btn-generate').addEventListener('click', generateCompare);
+  $('btn-generate-set').addEventListener('click', generateSet);
   $('btn-generate-video').addEventListener('click', generateVideo);
 
   chrome.storage.onChanged.addListener(async (changes, area) => {

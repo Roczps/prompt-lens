@@ -1,5 +1,5 @@
 import { getSettings } from './lib/settings.js';
-import { reversePrompt, generateImage, describeCharacter, planPostSet } from './lib/gemini.js';
+import { reversePrompt, generateImage, describeCharacter, planPostSet, writePostCopy } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { generateImageAtlas, pollAtlasPrediction } from './lib/atlas.js';
 import { generateImageComfy, pollComfyHistory } from './lib/comfy.js';
@@ -494,7 +494,85 @@ async function startPostSet({
     2
   ).catch((e) => console.error('post set failed:', e));
 
+  // Caption copy for the set, generated alongside the images.
+  runPostCopy({
+    taskId,
+    setId,
+    platform,
+    presetName: preset?.name || '',
+    anchorDataUrl,
+    shotLabels: shots.map((s) => s.label)
+  }).catch((e) => console.error('post copy failed:', e));
+
   return shots.length;
+}
+
+/** Read-modify-write a single set's copy record (mirrors updateGen). */
+async function updatePostCopy(taskId, setId, mutate) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  if (!task) return;
+  if (!task.postCopies) task.postCopies = {};
+  if (!task.postCopies[setId]) task.postCopies[setId] = {};
+  mutate(task.postCopies[setId]);
+  await chrome.storage.local.set({ tasks });
+}
+
+/** Generate (or regenerate) the platform caption copy for a post set. */
+async function runPostCopy({ taskId, setId, platform, presetName, anchorDataUrl, shotLabels = [] }) {
+  await updatePostCopy(taskId, setId, (c) => {
+    c.status = 'running';
+    c.platform = platform;
+    c.presetName = presetName;
+    c.error = null;
+  });
+  try {
+    const settings = await getSettings();
+    if (!settings.apiKey) throw new Error('文案生成需要 Gemini API Key（设置页填写）');
+    const inline = dataUrlToInlinePart(anchorDataUrl).inlineData;
+    const copy = await writePostCopy(
+      {
+        base64: inline.data,
+        mimeType: inline.mimeType,
+        platform,
+        presetName,
+        shots: shotLabels
+      },
+      settings
+    );
+    await updatePostCopy(taskId, setId, (c) => {
+      c.status = 'done';
+      c.title = copy.title;
+      c.body = copy.body;
+      c.tags = copy.tags;
+    });
+  } catch (e) {
+    await updatePostCopy(taskId, setId, (c) => {
+      c.status = 'error';
+      c.error = String(e?.message || e);
+    });
+  }
+}
+
+/** Regenerate copy for an existing set, reusing its anchor image and labels. */
+async function regeneratePostCopy({ taskId, setId }) {
+  const tasks = await getTasks();
+  const task = tasks[taskId];
+  if (!task) throw new Error('任务不存在');
+  const setGens = task.generations.filter((g) => g.setId === setId);
+  if (!setGens.length) throw new Error('找不到这组图');
+  const prev = task.postCopies?.[setId] || {};
+  const anchorGen = setGens[0].refGenId
+    ? task.generations.find((g) => g.id === setGens[0].refGenId && g.images?.[0])
+    : null;
+  await runPostCopy({
+    taskId,
+    setId,
+    platform: prev.platform || 'xhs',
+    presetName: prev.presetName || setGens[0].setPreset || '',
+    anchorDataUrl: anchorGen?.images?.[0] || task.source?.dataUrl,
+    shotLabels: setGens.sort((a, b) => a.setIndex - b.setIndex).map((g) => g.setLabel).filter(Boolean)
+  });
 }
 
 // ---- Recovery for in-flight remote tasks across service worker restarts ----
@@ -697,6 +775,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'GENERATE_SET': {
       startPostSet(msg.payload)
         .then((count) => sendResponse({ ok: true, count }))
+        .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+      return true;
+    }
+    case 'REGENERATE_COPY': {
+      regeneratePostCopy(msg.payload)
+        .then(() => sendResponse({ ok: true }))
         .catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
       return true;
     }

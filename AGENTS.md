@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.0.2**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.1.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -36,6 +36,7 @@ scripts/          test_gemini.mjs（离线测试）、gen_icons.py（图标生�
 
 - `tasks`：{ id → task }，上限 50 个。task = { id, createdAt, source:{dataUrl,...}, status, result:{prompt, promptZh, imageType, analysis, tags, palette}, generations:[gen] }
 - gen = { id, status(running/done/error), kind(image/video), prompt, aspectRatio, imageSize, refMode(pose/style/none/source), provider(gemini/openai/seedream/comfy/flowagent), characterId/Name, setId/setLabel/setIndex/setTotal/setPreset（组图字段）, compareId（对比批次）, duration（视频秒数）, remoteTaskId（统一远程任务号，旧记录用 apimartTaskId）, images:[dataUrl], videos:[dataUrl], error }
+- `task.postCopies`：{ setId → {status, platform(xhs/ins), presetName, title, body, tags:[], error} }，组图的配套发布文案（writePostCopy 生成，画布展示/复制/重新生成，消息 REGENERATE_COPY）
 - `characters`：角色卡 { id → {name, dataUrl, desc, status, error} }，desc 由 describeCharacter 自动识别
 - 设置在 `chrome.storage.sync`（API Key 等，见 lib/settings.js 的 DEFAULTS）
 
@@ -52,7 +53,7 @@ scripts/          test_gemini.mjs（离线测试）、gen_icons.py（图标生�
 ## 生图流程（background.js）
 
 单张：startGeneration → makeGenRecord → executeGeneration（统一执行器：解析角色卡/参考图 → 按 provider 分发 gemini/openai/seedream/comfy，kind==='video' 走 flowagent → updateGen 落结果）。
-组图：startPostSet → planPostSet（Gemini 视觉模型看参考图出分镜 JSON 数组，注入预设风格锚 + 平台规则 + NEGATIVE_TAIL）→ 批量建 gen（带 setId）→ runWithConcurrency 并发 2 执行。
+组图：startPostSet → planPostSet（Gemini 视觉模型看参考图出分镜 JSON 数组，注入预设风格锚 + 平台规则 + NEGATIVE_TAIL）→ 批量建 gen（带 setId）→ runWithConcurrency 并发 2 执行；同时 runPostCopy 用锚图 + 分镜标签调 writePostCopy 生成平台文案（小红书标题/正文/标签，ins 英文 caption+hashtags），存 task.postCopies[setId]，画布可重新生成（REGENERATE_COPY）。侧边栏和画布都能发起组图（画布入口带独立渠道下拉）。
 对比：startCompareGeneration（GENERATE_COMPARE 消息）→ 每个勾选渠道各建一条 gen（同 compareId）→ Promise.all 并行执行（不同后端无共享限流）。
 视频：startVideoGeneration（GENERATE_VIDEO 消息）→ kind='video' 的 gen → generateVideoFlow（withImage 时把当前图作为参考）。
 重试：retryGeneration 重置 gen 状态后走 executeGeneration，可覆盖 provider（视频 gen 不换渠道）。

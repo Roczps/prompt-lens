@@ -320,3 +320,40 @@ select:focus { border-color: var(--accent); }
 
 .cell-error { margin-top: 0; }
 .cell-actions { display: flex; gap: 8px; }
+
+/* ---- post set caption copy ---- */
+.copy-block {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.copy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.copy-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-2);
+  letter-spacing: 0.5px;
+}
+.copy-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.copy-body {
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.copy-tags {
+  color: var(--accent);
+  font-size: 13px;
+  word-break: break-all;
+}

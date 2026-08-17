@@ -324,6 +324,61 @@ const anchoredPreset = planInstruction.includes('外貌与服装穿搭');
 console.log('--- anchored plan:', anchoredMode, '| card plan:', cardMode, '| anchored preset wardrobe:', anchoredPreset);
 if (!anchoredMode || !cardMode || !anchoredPreset) throw new Error('anchored planning broken');
 
+// 9b. post-set caption copy: platform rules, hashtag cleanup, error mapping
+const { writePostCopy } = await import('../lib/gemini.js');
+
+let copyInstruction = '';
+globalThis.fetch = async (url, opts = {}) => {
+  const body = JSON.parse(opts.body);
+  copyInstruction = body.contents[0].parts[1].text;
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  title: '在游艇上偷得半日闲☀️',
+                  body: '第一行\n第二行',
+                  tags: ['#游艇出海', '夏日穿搭', ' plog ']
+                })
+              }
+            ]
+          }
+        }
+      ]
+    })
+  };
+};
+const xhsCopy = await writePostCopy(
+  { base64: 'x', mimeType: 'image/jpeg', platform: 'xhs', presetName: '小红书 · 旅行 plog', shots: ['封面·全身', '手部特写'] },
+  settings
+);
+if (!copyInstruction.includes('平台：小红书') || !copyInstruction.includes('封面·全身')) throw new Error('copy xhs instruction broken');
+if (!copyInstruction.includes('旅行 plog')) throw new Error('copy preset name missing');
+if (xhsCopy.tags[0] !== '游艇出海' || xhsCopy.tags[2] !== 'plog') throw new Error('copy hashtag cleanup broken');
+if (xhsCopy.body !== '第一行\n第二行') throw new Error('copy body broken');
+await writePostCopy({ base64: 'x', mimeType: 'image/jpeg', platform: 'ins' }, settings);
+if (!copyInstruction.includes('平台：Instagram') || !copyInstruction.includes('hashtag')) throw new Error('copy ins instruction broken');
+console.log('--- writePostCopy ok (title:', xhsCopy.title + ')');
+
+// empty copy result is an error, not a silent success
+globalThis.fetch = async () => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ candidates: [{ content: { parts: [{ text: '{"title":"","body":"","tags":[]}' }] } }] })
+});
+try {
+  await writePostCopy({ base64: 'x', mimeType: 'image/jpeg', platform: 'xhs' }, settings);
+  throw new Error('should have thrown');
+} catch (e) {
+  if (!e.message.includes('文案生成结果为空')) throw e;
+  console.log('--- empty copy guarded');
+}
+
 const { friendlyGenError } = await import('../lib/util.js');
 const mapped = friendlyGenError(new Error('Your prompt or input was rejected by the content safety system.'));
 const passthrough = friendlyGenError(new Error('HTTP 500 boring error'));

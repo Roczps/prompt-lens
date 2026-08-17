@@ -102,6 +102,42 @@
         </div>
 
         <div class="card">
+          <div class="card-head"><h2>组图创作 · 小红书 / Instagram</h2></div>
+          <div class="gen-controls">
+            <label>内容预设
+              <select id="set-preset">
+                <option value="">自动 · 跟随参考图风格</option>
+              </select>
+            </label>
+            <label>平台 · 画幅
+              <select id="set-platform">
+                <option value="xhs|3:4">小红书 · 3:4</option>
+                <option value="ins|4:5">Instagram · 4:5</option>
+                <option value="ins|1:1">Instagram · 1:1</option>
+              </select>
+            </label>
+            <label>张数
+              <select id="set-count">
+                <option value="4">4 张</option>
+                <option value="5">5 张</option>
+                <option value="6">6 张</option>
+              </select>
+            </label>
+            <label>生图渠道
+              <select id="set-provider">
+                <option value="gemini">Gemini</option>
+                <option value="openai">GPT-Image</option>
+                <option value="seedream">Seedream</option>
+                <option value="comfy">ComfyUI（本地）</option>
+              </select>
+            </label>
+          </div>
+          <p class="dim hint-line">以当前图为风格锚，AI 先策划分镜再批量生成，同时自动写好平台文案（小红书标题/正文/话题标签，Instagram 英文 caption + hashtags）。分辨率与角色替换沿用上方设置。</p>
+          <button id="btn-generate-set" class="primary">策划并生成组图 + 文案</button>
+          <div id="set-error" class="error hidden"></div>
+        </div>
+
+        <div class="card">
           <div class="card-head"><h2>FlowAgent 视频</h2></div>
           <textarea id="video-prompt" rows="3" spellcheck="false" placeholder="视频提示词（留空则使用左侧图片提示词）"></textarea>
           <div class="gen-controls">
