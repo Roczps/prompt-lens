@@ -324,6 +324,15 @@ const anchoredPreset = planInstruction.includes('外貌与服装穿搭');
 console.log('--- anchored plan:', anchoredMode, '| card plan:', cardMode, '| anchored preset wardrobe:', anchoredPreset);
 if (!anchoredMode || !cardMode || !anchoredPreset) throw new Error('anchored planning broken');
 
+// platform-native viral shot rules are always injected
+await planPostSet({ base64: 'x', mimeType: 'image/jpeg', platform: 'xhs', count: 4 }, settings);
+if (!planInstruction.includes('真人出镜') || !planInstruction.includes('15% 高度留干净留白'))
+  throw new Error('xhs viral cover rules missing');
+await planPostSet({ base64: 'x', mimeType: 'image/jpeg', platform: 'ins', count: 4 }, settings);
+if (!planInstruction.includes('叙事弧') || !planInstruction.includes('负空间'))
+  throw new Error('ins narrative arc rules missing');
+console.log('--- platform viral shot rules injected');
+
 // 9b. post-set caption copy: platform rules, hashtag cleanup, error mapping
 const { writePostCopy } = await import('../lib/gemini.js');
 
@@ -359,10 +368,14 @@ const xhsCopy = await writePostCopy(
 );
 if (!copyInstruction.includes('平台：小红书') || !copyInstruction.includes('封面·全身')) throw new Error('copy xhs instruction broken');
 if (!copyInstruction.includes('旅行 plog')) throw new Error('copy preset name missing');
+if (!copyInstruction.includes('信任建立') || !copyInstruction.includes('数字清单') || !copyInstruction.includes('互动钩子'))
+  throw new Error('copy xhs viral methodology missing');
 if (xhsCopy.tags[0] !== '游艇出海' || xhsCopy.tags[2] !== 'plog') throw new Error('copy hashtag cleanup broken');
 if (xhsCopy.body !== '第一行\n第二行') throw new Error('copy body broken');
 await writePostCopy({ base64: 'x', mimeType: 'image/jpeg', platform: 'ins' }, settings);
 if (!copyInstruction.includes('平台：Instagram') || !copyInstruction.includes('hashtag')) throw new Error('copy ins instruction broken');
+if (!copyInstruction.includes('call-to-action') || !copyInstruction.includes('125 字符'))
+  throw new Error('copy ins viral methodology missing');
 console.log('--- writePostCopy ok (title:', xhsCopy.title + ')');
 
 // empty copy result is an error, not a silent success
