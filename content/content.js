@@ -32,11 +32,28 @@
       if (!currentImg) return;
       const srcUrl = currentImg.currentSrc || currentImg.src;
       if (!srcUrl) return;
-      chrome.runtime.sendMessage({
-        type: 'ANALYZE_IMAGE',
-        payload: { srcUrl, pageUrl: location.href }
-      });
-      showToast('已开始反推，结果稍后显示在侧边栏');
+      // Extension reload invalidates scripts already injected into open pages.
+      // Both a synchronous throw and runtime.lastError must be handled here.
+      const reportFailure = (message) => {
+        if (/context invalidated|receiving end does not exist|could not establish connection|message port closed/i.test(message)) {
+          showToast('插件已更新或连接已失效，请刷新当前网页（F5）后重新点击图片悬浮按钮');
+        } else {
+          showToast(`图片未提交成功：${message || '后台未响应，请刷新网页后重试'}`);
+        }
+      };
+      try {
+        chrome.runtime.sendMessage({
+          type: 'ANALYZE_IMAGE',
+          payload: { srcUrl, pageUrl: location.href }
+        }, (response) => {
+          const error = chrome.runtime.lastError;
+          if (error) return reportFailure(error.message || '后台通信失败');
+          if (!response?.ok) return reportFailure(response?.error || '后台未确认接收图片');
+          showToast('图片已提交，获取和反推进度请查看侧边栏');
+        });
+      } catch (error) {
+        reportFailure(String(error?.message || error));
+      }
       hideBall();
     });
     document.documentElement.appendChild(ball);
