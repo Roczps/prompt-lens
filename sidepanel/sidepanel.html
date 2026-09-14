@@ -70,13 +70,14 @@
 
         <div class="card">
           <div class="card-head"><h2>生成新图</h2></div>
+          <p id="grok-hint" class="hint" hidden>Grok 画幅映射到相近支持比例，分辨率由后端决定。</p>
           <div class="gen-controls">
             <label>渠道
               <select id="gen-provider">
                 <option value="gemini">Gemini</option>
                 <option value="openai">GPT-Image</option>
                 <option value="seedream">Seedream</option>
-                <option value="comfy">ComfyUI（本地）</option>
+                <option value="grok">Grok（grok2api）</option>
               </select>
             </label>
             <label>画幅

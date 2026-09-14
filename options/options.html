@@ -90,37 +90,23 @@
     </section>
 
     <section class="card">
-      <h2>本地 ComfyUI（可选）</h2>
-      <div class="row">
-        <label>
-          服务地址
-          <div class="key-row">
-            <input type="text" id="comfyBaseUrl" placeholder="http://127.0.0.1:8188" />
-            <button id="btn-test-comfy" class="chip-btn">测试</button>
-          </div>
-          <span id="test-comfy-result" class="hint"></span>
-        </label>
-        <label>
-          模型（checkpoint 或 diffusion model 文件名）
-          <input type="text" id="comfyCheckpoint" list="comfy-checkpoints" placeholder="z_image_turbo_bf16.safetensors" />
-          <datalist id="comfy-checkpoints"></datalist>
-          <span class="hint">点"测试"连通后会自动列出可选模型；Z-Image 系列自动使用专属工作流（9 步 · CFG 1.0，忽略下方步数/CFG）</span>
-        </label>
-      </div>
-      <div class="row">
-        <label>
-          采样步数
-          <input type="number" id="comfySteps" min="1" max="150" step="1" />
-        </label>
-        <label>
-          CFG
-          <input type="number" id="comfyCfg" min="1" max="30" step="0.5" />
-        </label>
-      </div>
-      <label>
-        负面提示词
-        <input type="text" id="comfyNegative" placeholder="留空使用内置默认负面词" />
+      <h2>Grok / grok2api（可选）</h2>
+      <label>服务地址（可带 /v1）
+        <div class="key-row">
+          <input type="text" id="grokBaseUrl" placeholder="http://127.0.0.1:8011/v1" />
+          <button id="btn-test-grok" class="chip-btn">测试</button>
+        </div>
+        <span id="test-grok-result" class="hint"></span>
       </label>
+      <label>API Key（服务未启用鉴权时可留空）
+        <input type="password" id="grokApiKey" autocomplete="off" />
+      </label>
+      <div class="row">
+        <label>文生图模型<input type="text" id="grokImageModel" list="grok-models" /></label>
+        <label>参考图编辑模型<input type="text" id="grokEditModel" list="grok-models" /></label>
+      </div>
+      <datalist id="grok-models"></datalist>
+      <p class="hint">参考图／角色卡自动走编辑模型。画幅映射到 1:1、16:9、9:16、3:2、2:3；分辨率由后端决定。同步请求不支持断点续传，连接中断后请先检查后台结果。</p>
     </section>
 
     <section class="card">
@@ -160,7 +146,7 @@
             <option value="gemini">Gemini</option>
             <option value="openai">GPT-Image</option>
             <option value="seedream">Seedream</option>
-            <option value="comfy">ComfyUI（本地）</option>
+            <option value="grok">Grok（grok2api）</option>
           </select>
         </label>
         <label>

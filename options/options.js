@@ -2,7 +2,7 @@ import { DEFAULT_SETTINGS, getSettings, saveSettings } from '../lib/settings.js'
 import { testApiKey } from '../lib/gemini.js';
 import { testOpenAIKey } from '../lib/openai.js';
 import { testAtlasKey } from '../lib/atlas.js';
-import { testComfy } from '../lib/comfy.js';
+import { testGrok } from '../lib/grok.js';
 import { testFlowAgent } from '../lib/flowagent.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,11 +16,10 @@ const FIELDS = [
   'openaiProtocol',
   'atlasApiKey',
   'atlasImageModel',
-  'comfyBaseUrl',
-  'comfyCheckpoint',
-  'comfySteps',
-  'comfyCfg',
-  'comfyNegative',
+  'grokBaseUrl',
+  'grokApiKey',
+  'grokImageModel',
+  'grokEditModel',
   'flowagentBaseUrl',
   'flowagentModel',
   'videoDuration',
@@ -44,14 +43,14 @@ async function save() {
     'openaiBaseUrl',
     'openaiImageModel',
     'atlasImageModel',
-    'comfyBaseUrl',
+    'grokBaseUrl',
+    'grokImageModel',
+    'grokEditModel',
     'flowagentBaseUrl'
   ];
   for (const f of FIELDS) {
     let v = $(f).value.trim();
     if (f === 'minImageSize') v = Math.max(40, Number(v) || DEFAULT_SETTINGS.minImageSize);
-    if (f === 'comfySteps') v = Math.min(150, Math.max(1, Number(v) || DEFAULT_SETTINGS.comfySteps));
-    if (f === 'comfyCfg') v = Math.min(30, Math.max(1, Number(v) || DEFAULT_SETTINGS.comfyCfg));
     if (f === 'videoDuration') v = Number(v) || DEFAULT_SETTINGS.videoDuration;
     if (fallbackToDefault.includes(f) && !v) v = DEFAULT_SETTINGS[f];
     patch[f] = v;
@@ -90,20 +89,17 @@ $('btn-test-openai').addEventListener('click', () =>
 $('btn-test-atlas').addEventListener('click', () =>
   runTest('test-atlas-result', () => testAtlasKey('', $('atlasApiKey').value.trim()))
 );
-$('btn-test-comfy').addEventListener('click', () =>
-  runTest('test-comfy-result', async () => {
-    const { checkpoints, diffusionModels } = await testComfy($('comfyBaseUrl').value.trim());
-    const all = [...checkpoints, ...diffusionModels];
-    const list = $('comfy-checkpoints');
+$('btn-test-grok').addEventListener('click', () =>
+  runTest('test-grok-result', async () => {
+    const all = await testGrok({ grokBaseUrl: $('grokBaseUrl').value.trim(), grokApiKey: $('grokApiKey').value.trim() });
+    const list = $('grok-models');
     list.innerHTML = '';
     for (const name of all) {
       const opt = document.createElement('option');
       opt.value = name;
       list.appendChild(opt);
     }
-    return all.length
-      ? `连接成功，发现 ${all.length} 个模型（点模型输入框可选；Z-Image 系列自动用专属工作流）`
-      : '连接成功，但没有发现可用模型';
+    return `模型接口可访问，发现 ${all.length} 个图像模型；尚未验证实际生成`;
   })
 );
 $('btn-test-flow').addEventListener('click', () =>

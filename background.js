@@ -2,7 +2,7 @@ import { getSettings } from './lib/settings.js';
 import { reversePrompt, generateImage, describeCharacter, planPostSet, writePostCopy } from './lib/gemini.js';
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { generateImageAtlas, pollAtlasPrediction } from './lib/atlas.js';
-import { generateImageComfy, pollComfyHistory } from './lib/comfy.js';
+import { generateImageGrok } from './lib/grok.js';
 import { generateVideoFlow, pollFlowVideoJob } from './lib/flowagent.js';
 import { getPreset, NEGATIVE_TAIL } from './lib/presets.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail, friendlyGenError } from './lib/util.js';
@@ -18,7 +18,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     'openaiBaseUrl',
     'flowagentBaseUrl',
     'atlasImageModel',
-    'comfyCheckpoint'
+    'imageProvider'
   ]);
   if (!s.openaiApiKey && s.openaiBaseUrl === 'https://api.openai.com/v1') {
     await chrome.storage.sync.set({ openaiBaseUrl: 'https://api.apimart.ai/v1' });
@@ -28,13 +28,12 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (s.flowagentBaseUrl === 'http://127.0.0.1:8000') {
     await chrome.storage.sync.set({ flowagentBaseUrl: 'http://127.0.0.1:8001' });
   }
-  // 1.0.0: Seedream default moved from v4.5 to 5.0 Pro; local ComfyUI uses
-  // Z-Image Turbo when nothing else was configured yet.
+  // 1.0.0: Seedream default moved from v4.5 to 5.0 Pro.
   if (s.atlasImageModel === 'bytedance/seedream-v4.5') {
     await chrome.storage.sync.set({ atlasImageModel: 'bytedance/seedream-v5.0-pro/text-to-image' });
   }
-  if (!s.comfyCheckpoint) {
-    await chrome.storage.sync.set({ comfyCheckpoint: 'z_image_turbo_bf16.safetensors' });
+  if (s.imageProvider === 'comfy') {
+    await chrome.storage.sync.set({ imageProvider: 'grok' });
   }
   // 1.0.1: one-shot reset of the default resolution to 1K so Seedream 5.0 Pro
   // bills at the cheap 1.5K tier ($0.045). Guarded by a revision marker so
@@ -143,7 +142,7 @@ function makeGenRecord(params) {
     refGenId: params.refGenId || '',
     compareId: params.compareId || '',
     duration: params.duration || 0,
-    // Resumable remote task id (APIMart task / Atlas prediction / ComfyUI
+    // Resumable remote task id (APIMart task / Atlas prediction / legacy ComfyUI
     // prompt / FlowAgent video job). apimartTaskId kept for old records.
     remoteTaskId: '',
     apimartTaskId: '',
@@ -238,16 +237,13 @@ async function executeGeneration(taskId, genId) {
         },
         settings
       );
-    } else if (gen.provider === 'comfy') {
-      result = await generateImageComfy(
-        {
-          prompt: gen.prompt,
-          aspectRatio: gen.aspectRatio,
-          imageSize: gen.imageSize,
-          onTaskSubmitted: rememberRemoteTask
-        },
+    } else if (gen.provider === 'grok') {
+      result = await generateImageGrok(
+        { prompt: gen.prompt, aspectRatio: gen.aspectRatio, poseRefDataUrl, styleRefDataUrl, charDataUrl, charDesc },
         settings
       );
+    } else if (gen.provider === 'comfy') {
+      throw new Error('ComfyUI 渠道已停用，请选择 Grok 或其他渠道重试');
     } else {
       if (!settings.apiKey) throw new Error('未配置 Gemini API Key');
       result = await generateImage(
@@ -576,7 +572,7 @@ async function regeneratePostCopy({ taskId, setId }) {
 }
 
 // ---- Recovery for in-flight remote tasks across service worker restarts ----
-// APIMart / Atlas / ComfyUI / FlowAgent all persist a remote task id on the
+// APIMart / Atlas / FlowAgent persist a remote task id on the
 // gen record, so their polls can be resumed by the alarm below.
 
 const activePolls = new Set();
@@ -589,14 +585,13 @@ function remoteTaskIdOf(gen) {
 function pollerFor(gen) {
   if (gen.kind === 'video') return pollFlowVideoJob;
   if (gen.provider === 'seedream') return pollAtlasPrediction;
-  if (gen.provider === 'comfy') return pollComfyHistory;
   return pollApimartTask;
 }
 
 async function syncResumeAlarm() {
   const tasks = await getTasks();
   const hasPending = Object.values(tasks).some((t) =>
-    t.generations.some((g) => g.status === 'running' && remoteTaskIdOf(g))
+    t.generations.some((g) => g.status === 'running' && g.provider !== 'comfy' && remoteTaskIdOf(g))
   );
   if (hasPending) {
     chrome.alarms.create('plens-resume', { periodInMinutes: 0.5 });
@@ -610,7 +605,7 @@ async function resumePendingGenerations() {
   const settings = await getSettings();
   for (const task of Object.values(tasks)) {
     for (const gen of task.generations) {
-      if (gen.status !== 'running') continue;
+      if (gen.status !== 'running' || gen.provider === 'comfy') continue;
       const remoteId = remoteTaskIdOf(gen);
       if (remoteId) {
         if (activePolls.has(gen.id)) continue;
@@ -638,7 +633,9 @@ async function resumePendingGenerations() {
         // Non-resumable run (Gemini or pre-submit) whose worker died.
         await updateGen(task.id, gen.id, (g) => {
           g.status = 'error';
-          g.error = '生成中断（浏览器回收了插件后台），请重试';
+          g.error = g.provider === 'grok'
+            ? 'Grok 生成中断，远端结果未知；请先检查 grok2api 后台，确认后再手动重试。'
+            : '生成中断（浏览器回收了插件后台），请重试';
         });
       }
     }
@@ -650,17 +647,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'plens-resume') resumePendingGenerations();
 });
 
-// ComfyUI's security middleware rejects any request whose Origin header does
-// not match its Host with HTTP 403, and the browser always stamps
-// chrome-extension://... on extension fetches (it cannot be unset in code).
-// Strip the Origin header at the network layer for the local backends.
-const DNR_RULE_COMFY = 101;
+// Keep the FlowAgent Origin workaround; retire the old ComfyUI rule 101.
 const DNR_RULE_FLOW = 102;
 
 async function syncLocalOriginRules() {
   const settings = await getSettings();
   const rules = [
-    { id: DNR_RULE_COMFY, base: settings.comfyBaseUrl || 'http://127.0.0.1:8188' },
     { id: DNR_RULE_FLOW, base: settings.flowagentBaseUrl || 'http://127.0.0.1:8001' }
   ].map(({ id, base }) => ({
     id,
@@ -676,7 +668,7 @@ async function syncLocalOriginRules() {
   }));
   try {
     await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: rules.map((r) => r.id),
+      removeRuleIds: [101, ...rules.map((r) => r.id)],
       addRules: rules
     });
   } catch (e) {
@@ -686,7 +678,7 @@ async function syncLocalOriginRules() {
 
 syncLocalOriginRules();
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes.comfyBaseUrl || changes.flowagentBaseUrl)) {
+  if (area === 'sync' && changes.flowagentBaseUrl) {
     syncLocalOriginRules();
   }
 });

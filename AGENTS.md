@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / 本地 ComfyUI 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.2.0**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.3.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -8,6 +8,14 @@
 - **测试**：`node scripts/test_gemini.mjs` 是离线测试套件（stub fetch，覆盖 Gemini/OpenAI/APIMart 协议、分镜策划、预设注入、错误映射）。改动 lib/ 或 background.js 后必须跑通它，并对改动文件跑 `node --check`。
 - **每完成一个功能**：更新 README 功能列表、manifest.json 版本号（+0.1.0），用中文提交。
 - **UI 语言**是中文；发给生图模型的提示词是英文；给分析/策划模型的指令是中文。
+
+## v1.3.0 接入说明（优先于下文旧版 ComfyUI 描述）
+
+- 当前第四生图渠道为 `grok`，适配器 `lib/grok.js`：同步 `/v1/images/generations` 与 multipart `/v1/images/edits`，支持参考图和角色卡。
+- 配置：`grokBaseUrl`（默认 `http://127.0.0.1:8011/v1`）、`grokApiKey`、`grokImageModel`、`grokEditModel`。文生图默认 `grok-imagine-image`，编辑默认 `grok-imagine-image-edit`。
+- 五档画幅就近映射；不承诺用户所选分辨率。同步请求保活但不支持远程恢复，超时不自动重发。
+- ComfyUI 设置/选项和执行路径停用；旧适配器与测试留存，旧任务/图片/配置不删除，旧任务不自动轮询。默认渠道 `comfy` 读取或升级时迁移为 `grok`。DNR 101 移除，FlowAgent 102 保留。
+- `node scripts/test_gemini.mjs` 已包含 `scripts/test_grok.mjs`。Grok 设置页测试仅验证模型列表；真实服务生成另行验收。
 
 ## 架构速览
 

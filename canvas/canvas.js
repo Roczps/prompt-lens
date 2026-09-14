@@ -7,7 +7,8 @@ const PROVIDER_LABELS = {
   gemini: 'Gemini',
   openai: 'GPT-Image',
   seedream: 'Seedream',
-  comfy: 'ComfyUI',
+  comfy: 'ComfyUI（已停用）',
+  grok: 'Grok',
   flowagent: 'FlowAgent 视频'
 };
 const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '', source: '图生视频' };
@@ -364,12 +365,12 @@ function renderCell(task, gen) {
     cell.appendChild(err);
     const retry = document.createElement('button');
     retry.className = 'chip-btn';
-    retry.textContent = '重试';
+    retry.textContent = gen.provider === 'comfy' ? '用 Grok 重试' : '重试';
     retry.addEventListener('click', () => {
       retry.disabled = true;
       chrome.runtime.sendMessage({
         type: 'RETRY_GEN',
-        payload: { taskId: task.id, genId: gen.id, provider: gen.provider }
+        payload: { taskId: task.id, genId: gen.id, provider: gen.provider === 'comfy' ? 'grok' : gen.provider }
       });
     });
     cell.appendChild(retry);

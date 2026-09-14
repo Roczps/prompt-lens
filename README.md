@@ -8,7 +8,7 @@
 - **弹窗入口**：点击插件图标，粘贴 / 拖入 / 上传本地图片进行反推
 - **多维度画面解构**：图像类型 + 主体 / 姿势 / 环境 / 构图 / 光线 / 色彩 / 风格 / 细节 / 氛围逐项分析，附词卡与主色色卡，点击即复制
 - **中英双语提示词**：英文提示词可直接编辑后送去生图，附中文对照
-- **四生图渠道**：Gemini（Nano Banana 2）、GPT-Image（gpt-image-2，默认走 APIMart 异步协议，兼容 OpenAI 官方同步接口）、Seedream（Atlas Cloud 中转，默认 Seedream 5.0 Pro，带参考图时自动切 edit 变体）、本地 ComfyUI（内置两套工作流：经典 checkpoint txt2img，以及 Z-Image Turbo 专属图——UNETLoader + Qwen3-4B 文本编码 + Flux AE，9 步 CFG 1.0，自动识别模型名切换）
+- **四生图渠道**：Gemini、GPT-Image（APIMart / OpenAI）、Seedream（Atlas Cloud）、Grok（grok2api，支持文生图及参考图编辑）。ComfyUI 暂停使用，历史图片和旧配置保留。
 - **画布工作台**：侧边栏保持快速反推定位，点顶栏画布按钮在新标签页打开全屏工作台——左栏源图与提示词编辑，右侧勾选多个渠道后同一提示词并行发给所有渠道，结果按批次排成对比网格，每格独立重试/下载
 - **FlowAgent 视频**：接入本机 FlowAgent 服务（Google Flow 桥接，OpenAI 兼容接口），在画布中文生视频或以当前图为参考图生视频（4/6/8/10 秒），结果卡片内嵌播放器，可下载 mp4
 - **侧边栏生图**：选择画幅（1:1 到 21:9）与分辨率（512 / 1K / 2K / 4K，自动映射为各渠道支持的尺寸）
@@ -18,7 +18,14 @@
 - **组图配套文案（爆款方法论）**：组图生成的同时自动写好发布文案，指令内置各平台爆款打法——小红书：五选一标题公式（数字清单/痛点提问/反差反常识/结果前置/身份+场景+结果）+「信任建立→价值传递→行动引导」三段种草正文（含真实感小缺点与互动钩子）+ 核心词/长尾词/泛流量词三层话题标签；Instagram：125 字符截断线内的 hook 首行 + 个人视角 caption + save/comment CTA + 大流量/精准/社群三层 hashtags。分镜策划同步注入平台规则：小红书封面强制真人出镜、主体突出、顶部 15% 留白，Instagram 按 carousel 叙事弧（hook→细节→场景→变化→CTA 收尾）编排。文案可一键复制、不满意可重新生成
 - **内容预设库**：内置 8 个从优质提示词库蒸馏的组图预设（咖啡探店 plog、OOTD 街拍、居家氛围感、旅行 plog、Clean Girl 极简、Editorial 杂志街拍、胶片 Film Look、运动 Lifestyle），每个预设带英文风格锚、分镜节奏与平台规则（小红书封面自动留标题空位），并自动追加防水印/防乱码/防坏手负面词
 - **历史记录**：本地保留最近 50 个任务，可随时回看、重新生成；点击任意图片在新标签页查看大图并下载
-- **断点续传**：APIMart / Atlas Cloud / ComfyUI / FlowAgent 的远程任务号都会持久化，插件后台被浏览器回收后自动恢复轮询（启动时 / 每 30 秒闹钟 / 打开侧边栏或画布时），不丢结果
+- **断点续传**：APIMart / Atlas Cloud / FlowAgent 持久化远程任务号并恢复轮询。Grok 为同步请求，不支持远程任务恢复；超时或断网不会自动重发，请先检查服务端结果。旧 ComfyUI 任务保留，但不再自动轮询。
+
+## v1.3.0：Grok 接入
+
+- 在设置页配置 Grok 服务地址和 API Key；未开启服务鉴权时 Key 可留空。测试按钮只验证模型列表，不消耗生成额度，也不代表真实生成成功。
+- 单张、画布对比和组图均可选择 Grok；有参考图或角色卡时自动使用编辑模型。原默认渠道为 ComfyUI 时切换为 Grok，不删除旧数据。
+- Grok 画幅按最近比例映射到 1:1、16:9、9:16、3:2、2:3，512/1K/2K/4K 选项不控制 Grok 输出分辨率，实际尺寸由后端决定。
+- 重载扩展后需刷新已打开的画布和侧边栏。
 
 ## 安装
 
@@ -35,7 +42,7 @@
 | 生成图片（Gemini 渠道） | `gemini-3.1-flash-image` | Nano Banana 2，支持 4K 与多种画幅 |
 | 生成图片（GPT-Image 渠道） | `gpt-image-2` | 默认 APIMart 异步协议（提交任务 → 轮询 → 下载）；切到 OpenAI 官方时走同步 `generations`/`edits` 接口 |
 | 生成图片（Seedream 渠道） | `bytedance/seedream-v5.0-pro/text-to-image` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；约 $0.045/张（1.5K 档，2K 满档 $0.09），edit 首张参考图免费、之后每张 +$0.003；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
-| 生成图片（ComfyUI 渠道） | `z_image_turbo_bf16.safetensors` | 连本机 `http://127.0.0.1:8188`，设置页测试连通后可选任意 checkpoint / diffusion model；Z-Image 系列自动用专属工作流 |
+| 生成图片（Grok 渠道） | `grok-imagine-image` / `grok-imagine-image-edit` | 默认 `http://127.0.0.1:8011/v1`，地址、Key、生成和编辑模型均可修改 |
 | 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8001` 的 FlowAgent（Google Flow 桥接），无需 API Key |
 
 模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。
@@ -49,7 +56,8 @@ lib/
   gemini.js            Gemini API 封装（反推 + 生图 + 分镜策划 + Key 测试）
   openai.js            GPT-Image 渠道封装（generations / edits + APIMart 异步协议）
   atlas.js             Seedream 渠道封装（Atlas Cloud 提交/轮询 + v4/v5 尺寸预设）
-  comfy.js             本地 ComfyUI 渠道封装（checkpoint txt2img + Z-Image 工作流 + history 轮询）
+  grok.js             Grok2API 文生图 / 参考图编辑（同步 OpenAI Images 接口）
+  comfy.js            保留的旧适配器，当前产品不再调用
   flowagent.js         FlowAgent 视频封装（提交/轮询/health 检查）
   presets.js           组图内容预设库（风格锚 + 分镜节奏 + 平台规则）
   settings.js          设置读写与默认值

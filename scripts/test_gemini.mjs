@@ -762,4 +762,5 @@ try {
   if (e.pending !== true) throw e;
 }
 
+await import('./test_grok.mjs');
 console.log('ALL OK');

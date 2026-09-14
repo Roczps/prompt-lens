@@ -60,7 +60,7 @@
             <label class="check"><input type="checkbox" class="prov" value="gemini" checked /> Gemini</label>
             <label class="check"><input type="checkbox" class="prov" value="openai" /> GPT-Image</label>
             <label class="check"><input type="checkbox" class="prov" value="seedream" /> Seedream</label>
-            <label class="check"><input type="checkbox" class="prov" value="comfy" /> ComfyUI（本地）</label>
+            <label class="check"><input type="checkbox" class="prov" value="grok" /> Grok（grok2api）</label>
           </div>
           <div class="gen-controls">
             <label>画幅
@@ -96,7 +96,7 @@
               </select>
             </label>
           </div>
-          <p class="dim hint-line">勾选多个渠道时同一提示词会并行发给所有渠道，结果排成一行方便对比。ComfyUI 渠道暂不支持参考图/角色替换（纯提示词生图）。</p>
+          <p class="dim hint-line">勾选多个渠道时同一提示词会并行发给所有渠道，结果排成一行方便对比。Grok 支持参考图编辑；画幅自动映射为相近支持比例，分辨率由后端决定。</p>
           <button id="btn-generate" class="primary">生成</button>
           <div id="gen-error" class="error hidden"></div>
         </div>
@@ -128,7 +128,7 @@
                 <option value="gemini">Gemini</option>
                 <option value="openai">GPT-Image</option>
                 <option value="seedream">Seedream</option>
-                <option value="comfy">ComfyUI（本地）</option>
+                <option value="grok">Grok（grok2api）</option>
               </select>
             </label>
           </div>

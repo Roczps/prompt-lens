@@ -42,7 +42,8 @@ const PROVIDER_LABELS = {
   gemini: 'Gemini',
   openai: 'GPT-Image',
   seedream: 'Seedream',
-  comfy: 'ComfyUI',
+  comfy: 'ComfyUI（已停用）',
+  grok: 'Grok',
   flowagent: 'FlowAgent 视频'
 };
 
@@ -423,6 +424,9 @@ async function init() {
   $('gen-aspect').value = settings.aspectRatio;
   $('gen-size').value = settings.imageSize;
   $('gen-provider').value = settings.imageProvider || 'gemini';
+  const updateGrokHint = () => { $('grok-hint').hidden = $('gen-provider').value !== 'grok'; };
+  $('gen-provider').addEventListener('change', updateGrokHint);
+  updateGrokHint();
 
   $('btn-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
