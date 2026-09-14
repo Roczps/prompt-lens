@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.3.0**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.4.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -8,6 +8,12 @@
 - **测试**：`node scripts/test_gemini.mjs` 是离线测试套件（stub fetch，覆盖 Gemini/OpenAI/APIMart 协议、分镜策划、预设注入、错误映射）。改动 lib/ 或 background.js 后必须跑通它，并对改动文件跑 `node --check`。
 - **每完成一个功能**：更新 README 功能列表、manifest.json 版本号（+0.1.0），用中文提交。
 - **UI 语言**是中文；发给生图模型的提示词是英文；给分析/策划模型的指令是中文。
+
+## v1.4.0 Seedream 诊断
+
+- `testAtlasKey` 使用 `/public/v1/balance` 只读接口，返回明确的验证范围；余额查询 403 不等于生图无权限。不能用虚构 prediction ID 的 404 当作 Key 有效证据。
+- Atlas 错误解析读取 `msg`、`message`、`error.message`，保留 HTTP 状态和 request ID。生成响应兼容 `data.id` / `id`。
+- 完整回归 `node scripts/test_gemini.mjs` 包含 `scripts/test_atlas.mjs`；不自动重提交远程失败/未知任务。
 
 ## v1.3.0 接入说明（优先于下文旧版 ComfyUI 描述）
 

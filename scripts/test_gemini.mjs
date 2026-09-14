@@ -763,4 +763,5 @@ try {
 }
 
 await import('./test_grok.mjs');
+await import('./test_atlas.mjs');
 console.log('ALL OK');

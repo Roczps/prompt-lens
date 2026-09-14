@@ -76,10 +76,10 @@
       <label>
         API Key
         <div class="key-row">
-          <input type="password" id="atlasApiKey" placeholder="atlas-..." autocomplete="off" />
+          <input type="password" id="atlasApiKey" placeholder="apikey-...（Atlas Cloud 秘密密钥）" autocomplete="off" />
           <button id="btn-test-atlas" class="chip-btn">测试</button>
         </div>
-        <span class="hint">在 <a href="https://www.atlascloud.ai/console/api-keys" target="_blank" rel="noreferrer">Atlas Cloud 控制台</a> 创建；用于 Seedream 生图</span>
+        <span class="hint">在 <a href="https://www.atlascloud.ai/console/api-keys" target="_blank" rel="noreferrer">Atlas Cloud 控制台</a> 创建；必须是 Atlas Cloud 的秘密密钥（通常以 apikey- 开头），不能填公开 ID（ak_）或其他平台 Key。测试不保存设置，修改后请点击下方“保存设置”</span>
         <span id="test-atlas-result" class="hint"></span>
       </label>
       <label>
