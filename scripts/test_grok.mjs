@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateImageGrok, grokBase, grokSize, testGrok } from '../lib/grok.js';
-import { getSettings } from '../lib/settings.js';
+import { getSettings, saveSettings } from '../lib/settings.js';
 
 const previousFetch = globalThis.fetch;
 const previousChrome = globalThis.chrome;
@@ -73,6 +73,17 @@ try {
   assert.deepEqual(await testGrok({ grokBaseUrl: settings.grokBaseUrl }), ['grok-imagine-image']);
   globalThis.chrome = { storage: { sync: { get: async () => ({ imageProvider: 'comfy' }) } } };
   assert.equal((await getSettings()).imageProvider, 'grok');
+  let savedSettings = { grokBaseUrl: 'http://127.0.0.1:8011/v1', grokEndpointRevision: 0 };
+  globalThis.chrome = { storage: { sync: {
+    get: async defaults => ({ ...defaults, ...savedSettings }),
+    set: async patch => { savedSettings = { ...savedSettings, ...patch }; }
+  } } };
+  assert.equal((await getSettings()).grokBaseUrl, 'http://127.0.0.1:8000/v1');
+  assert.equal(savedSettings.grokEndpointRevision, 1);
+  await saveSettings({ grokBaseUrl: 'http://127.0.0.1:8011/v1', grokEditProtocol: 'multipart' });
+  assert.equal((await getSettings()).grokBaseUrl, 'http://127.0.0.1:8011/v1');
+  savedSettings = { grokBaseUrl: 'https://custom.example.com/v1', grokEndpointRevision: 0 };
+  assert.equal((await getSettings()).grokBaseUrl, 'https://custom.example.com/v1');
   console.log('--- Grok: generation, reference edit, size mapping, auth, downloads, errors, no replay, settings migration OK');
 } finally {
   globalThis.fetch = previousFetch;

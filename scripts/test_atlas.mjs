@@ -54,6 +54,20 @@ try {
   assert.equal(remembered, 'flat-response-id');
   assert.equal(result.images.length, 1);
   assert.equal(calls, 2);
+  globalThis.fetch = async (url, opts) => {
+    if (url.endsWith('/generateImage')) {
+      const body = JSON.parse(opts.body);
+      assert.equal(body.model, 'bytedance/seedream-v5.0-pro/edit');
+      assert.deepEqual(body.images, ['data:image/png;base64,c291cmNl', 'data:image/png;base64,ZmFjZQ==']);
+      assert.match(body.prompt, /Replace ONLY the facial identity/);
+      assert.match(body.prompt, /clothing/);
+      assert.match(body.prompt, /Keep every non-facial region unchanged/);
+      assert.ok(!body.prompt.includes('unwanted character outfit'));
+      return json({ data: { id: 'face-edit' } });
+    }
+    return json({ data: { status: 'completed', outputs: ['data:image/png;base64,aGk='] } });
+  };
+  await generateImageAtlas({ prompt: 'original scene', sourceDataUrl: 'data:image/png;base64,c291cmNl', styleRefDataUrl: 'data:image/png;base64,c3R5bGU=', charDataUrl: 'data:image/png;base64,ZmFjZQ==', charDesc: 'unwanted character outfit', aspectRatio: '3:4', imageSize: '1K' }, settings);
   console.log('--- Atlas diagnostics: auth normalization, HTTP/API errors, redaction, no false-positive checks, flat prediction response OK');
 } finally {
   globalThis.fetch = originalFetch;

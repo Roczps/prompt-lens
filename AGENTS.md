@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.5.0**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.6.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -8,6 +8,11 @@
 - **测试**：`node scripts/test_gemini.mjs` 是离线测试套件（stub fetch，覆盖 Gemini/OpenAI/APIMart 协议、分镜策划、预设注入、错误映射）。改动 lib/ 或 background.js 后必须跑通它，并对改动文件跑 `node --check`。
 - **每完成一个功能**：更新 README 功能列表、manifest.json 版本号（+0.1.0），用中文提交。
 - **UI 语言**是中文；发给生图模型的提示词是英文；给分析/策划模型的指令是中文。
+
+## v1.6.0 当前规则
+
+- `getSettings` 对旧默认 Grok 本机 8011 地址执行一次持久化迁移：8000/v1 + JSON，记录 `grokEndpointRevision=1`。以后手动保存的地址不再覆盖。
+- Seedream 有角色卡及原图时仅换脸：原图为图1，角色卡为图2，英文硬约束保留非面部区域；不注入角色卡体型/服装文字，不以旧成图替代角色卡。其他渠道沿用原逻辑。
 
 ## v1.5.0 Grok 网关兼容（优先于旧说明）
 

@@ -172,7 +172,7 @@ async function executeGeneration(taskId, genId) {
     // image): that image already carries the right face, wardrobe and style,
     // so it becomes the character reference. Drop the card's own image/desc --
     // its outfit usually differs and would fight the anchor.
-    if (gen.refGenId) {
+    if (gen.refGenId && !(gen.provider === 'seedream' && charDataUrl)) {
       const anchor = task.generations.find((g) => g.id === gen.refGenId && g.images?.[0]);
       if (anchor) {
         charDataUrl = anchor.images[0];
@@ -226,6 +226,7 @@ async function executeGeneration(taskId, genId) {
       }
       result = await generateImageAtlas(
         {
+          sourceDataUrl,
           prompt: gen.prompt,
           aspectRatio: gen.aspectRatio,
           imageSize: gen.imageSize,
