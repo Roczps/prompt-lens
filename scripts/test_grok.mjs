@@ -4,7 +4,7 @@ import { getSettings } from '../lib/settings.js';
 
 const previousFetch = globalThis.fetch;
 const previousChrome = globalThis.chrome;
-const settings = { grokBaseUrl: 'http://127.0.0.1:8011/', grokApiKey: 'test-only', grokImageModel: 'grok-imagine-image', grokEditModel: 'grok-imagine-image-edit' };
+const settings = { grokBaseUrl: 'http://127.0.0.1:8011/', grokApiKey: 'test-only', grokImageModel: 'grok-imagine-image', grokEditModel: 'grok-imagine-image-edit', grokEditProtocol: 'multipart' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 try {
   assert.equal(grokBase(settings), 'http://127.0.0.1:8011/v1');
@@ -36,6 +36,19 @@ try {
     return json({ data: [{ b64_json: 'iVBORw0KGgo=' }] });
   };
   await generateImageGrok({ prompt: 'a portrait', aspectRatio: '3:4', poseRefDataUrl: 'data:image/png;base64,aGk=', charDataUrl: 'data:image/jpeg;base64,aGk=', charDesc: 'short hair' }, settings);
+  globalThis.fetch = async (url, opts) => {
+    assert.ok(url.endsWith('/images/edits'));
+    const body = JSON.parse(opts.body);
+    assert.equal(opts.headers['Content-Type'], 'application/json');
+    assert.equal(body.model, settings.grokEditModel);
+    assert.equal(body.size, 'auto');
+    assert.equal(body.aspect_ratio, '3:4');
+    assert.equal(body.images[0].url, 'data:image/png;base64,aGk=');
+    return json({ data: [{ b64_json: 'iVBORw0KGgo=' }] });
+  };
+  await generateImageGrok({ prompt: 'portrait', aspectRatio: '3:4', styleRefDataUrl: 'data:image/png;base64,aGk=' }, { ...settings, grokEditProtocol: 'json' });
+  globalThis.fetch = async () => json({ error: { message: 'unauthorized' } }, 401);
+  await assert.rejects(testGrok(settings), /客户端 API Key/);
   for (const remote of ['/v1/files/image?id=one', 'https://cdn.example.com/image.png']) {
     globalThis.fetch = async (url, opts) => {
       if (url.endsWith('/images/generations')) return json({ data: [{ url: remote }] });

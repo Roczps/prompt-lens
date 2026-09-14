@@ -20,6 +20,7 @@ const FIELDS = [
   'grokApiKey',
   'grokImageModel',
   'grokEditModel',
+  'grokEditProtocol',
   'flowagentBaseUrl',
   'flowagentModel',
   'videoDuration',

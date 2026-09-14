@@ -20,6 +20,12 @@
 - **历史记录**：本地保留最近 50 个任务，可随时回看、重新生成；点击任意图片在新标签页查看大图并下载
 - **断点续传**：APIMart / Atlas Cloud / FlowAgent 持久化远程任务号并恢复轮询。Grok 为同步请求，不支持远程任务恢复；超时或断网不会自动重发，请先检查服务端结果。旧 ComfyUI 任务保留，但不再自动轮询。
 
+## v1.5.0：本机 Grok 网关兼容
+
+- 默认 Grok 地址修正为 `http://127.0.0.1:8000/v1`。已保存的自定义地址不自动覆盖；旧 8011 配置请在设置页修改并保存。
+- 参考图协议可选 JSON（当前 Go 网关，默认）或 Multipart（Python 版）。JSON 使用 `images:[{url}]` 与 `size:auto` / `aspect_ratio`。
+- 本机网关启用了鉴权，需要客户端 API Key；401 明确提示鉴权失败。连接错误显示实际地址及提交/下载阶段，避免把下载失败误认为尚未生成。
+
 ## v1.4.0：Seedream 鉴权诊断
 
 - Seedream 测试改用官方只读 `/public/v1/balance`；只在成功响应时通过，404/429/500 不再误报成功。余额接口需要账户余额读取权限，403 不能直接判定生图权限。
@@ -50,7 +56,7 @@
 | 生成图片（Gemini 渠道） | `gemini-3.1-flash-image` | Nano Banana 2，支持 4K 与多种画幅 |
 | 生成图片（GPT-Image 渠道） | `gpt-image-2` | 默认 APIMart 异步协议（提交任务 → 轮询 → 下载）；切到 OpenAI 官方时走同步 `generations`/`edits` 接口 |
 | 生成图片（Seedream 渠道） | `bytedance/seedream-v5.0-pro/text-to-image` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；约 $0.045/张（1.5K 档，2K 满档 $0.09），edit 首张参考图免费、之后每张 +$0.003；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
-| 生成图片（Grok 渠道） | `grok-imagine-image` / `grok-imagine-image-edit` | 默认 `http://127.0.0.1:8011/v1`，地址、Key、生成和编辑模型均可修改 |
+| 生成图片（Grok 渠道） | `grok-imagine-image` / `grok-imagine-image-edit` | 默认 `http://127.0.0.1:8000/v1`，地址、Key、生成和编辑模型均可修改 |
 | 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8001` 的 FlowAgent（Google Flow 桥接），无需 API Key |
 
 模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。

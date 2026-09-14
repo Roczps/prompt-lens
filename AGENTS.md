@@ -1,6 +1,6 @@
 # Prompt Lens — 开发交接文档（给 AI 助手）
 
-自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.4.0**，git 历史完整（中文提交信息）。
+自用 Chrome 插件（Manifest V3，纯原生 JS，无构建步骤）：反推网页图片的提示词，并用 Gemini / GPT-Image / Seedream / Grok2API 生成新图、多模型对比、批量生成社交平台组图、FlowAgent 生成视频。灵感来自 viko.fun。当前版本 **1.5.0**，git 历史完整（中文提交信息）。
 
 ## 开发约定
 
@@ -8,6 +8,12 @@
 - **测试**：`node scripts/test_gemini.mjs` 是离线测试套件（stub fetch，覆盖 Gemini/OpenAI/APIMart 协议、分镜策划、预设注入、错误映射）。改动 lib/ 或 background.js 后必须跑通它，并对改动文件跑 `node --check`。
 - **每完成一个功能**：更新 README 功能列表、manifest.json 版本号（+0.1.0），用中文提交。
 - **UI 语言**是中文；发给生图模型的提示词是英文；给分析/策划模型的指令是中文。
+
+## v1.5.0 Grok 网关兼容（优先于旧说明）
+
+- 默认地址为 `http://127.0.0.1:8000/v1`；不自动覆盖已保存地址。
+- `grokEditProtocol` 默认 `json`：Go 版编辑接口只接受 JSON `images:[{url}]`，使用 `size:auto` 及 `aspect_ratio`；`multipart` 适配 Python 版。
+- 当前本机服务健康接口在线，但未带客户端 Key 请求 `/v1/models` 返回 401。真实生图尚未验收，不重提交用户的未知结果任务。
 
 ## v1.4.0 Seedream 诊断
 
