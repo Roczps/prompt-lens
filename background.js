@@ -3,7 +3,7 @@ import { reversePrompt, generateImage, describeCharacter, planPostSet, writePost
 import { generateImageOpenAI, pollApimartTask } from './lib/openai.js';
 import { generateImageAtlas, pollAtlasPrediction } from './lib/atlas.js';
 import { generateImageGrok } from './lib/grok.js';
-import { generateVideoFlow, pollFlowVideoJob } from './lib/flowagent.js';
+import { generateVideoFlowKit, resumeFlowKitVideo, canResumeFlowKitVideo } from './lib/flowkit.js';
 import { getPreset, NEGATIVE_TAIL } from './lib/presets.js';
 import { uid, fetchImageData, dataUrlToBytes, dataUrlToInlinePart, makeThumbnail, friendlyGenError } from './lib/util.js';
 
@@ -16,17 +16,11 @@ chrome.runtime.onInstalled.addListener(async () => {
   const s = await chrome.storage.sync.get([
     'openaiApiKey',
     'openaiBaseUrl',
-    'flowagentBaseUrl',
     'atlasImageModel',
     'imageProvider'
   ]);
   if (!s.openaiApiKey && s.openaiBaseUrl === 'https://api.openai.com/v1') {
     await chrome.storage.sync.set({ openaiBaseUrl: 'https://api.apimart.ai/v1' });
-  }
-  // 0.9.0 shipped with port 8000 as the FlowAgent default; the shared backend
-  // actually serves the OpenAI-compatible API on 8001.
-  if (s.flowagentBaseUrl === 'http://127.0.0.1:8000') {
-    await chrome.storage.sync.set({ flowagentBaseUrl: 'http://127.0.0.1:8001' });
   }
   // 1.0.0: Seedream default moved from v4.5 to 5.0 Pro.
   if (s.atlasImageModel === 'bytedance/seedream-v4.5') {
@@ -140,10 +134,11 @@ function makeGenRecord(params) {
     setTotal: params.setTotal || 0,
     setPreset: params.setPreset || '',
     refGenId: params.refGenId || '',
+    ...(params.kind === 'video' ? { refImageIndex: params.refImageIndex ?? 0 } : {}),
     compareId: params.compareId || '',
     duration: params.duration || 0,
     // Resumable remote task id (APIMart task / Atlas prediction / legacy ComfyUI
-    // prompt / FlowAgent video job). apimartTaskId kept for old records.
+    // prompt / FlowKit polling descriptor). apimartTaskId kept for old records.
     remoteTaskId: '',
     apimartTaskId: '',
     images: [],
@@ -158,6 +153,8 @@ async function executeGeneration(taskId, genId) {
   const task = tasks[taskId];
   const gen = task?.generations.find((g) => g.id === genId);
   if (!task || !gen) return;
+  if (gen.kind === 'video' && activePolls.has(genId)) return;
+  if (gen.kind === 'video') activePolls.add(genId);
 
   try {
     const settings = await getSettings();
@@ -194,15 +191,38 @@ async function executeGeneration(taskId, genId) {
 
     let result;
     if (gen.kind === 'video') {
-      result = await generateVideoFlow(
-        {
+      if (gen.provider !== 'flowkit') throw new Error('旧视频渠道已停用；历史结果保留，请另建 FlowKit 视频任务。');
+      // Independent receipts cannot be overwritten by concurrent image/task snapshots.
+      const receiptKey = `flowkitVideo:${gen.id}`;
+      const receipt = (await chrome.storage.local.get(receiptKey))[receiptKey] || gen.remoteTaskId;
+      if (gen.flowkitNoResubmit || receipt) {
+        result = await resumeFlowKitVideo(settings, receipt);
+      } else {
+        let referenceDataUrl = '';
+        if (gen.refMode === 'source') {
+          // Use the exact clicked image. A missing generated frame must never
+          // fall back to a character card, the first variant or the task source.
+          referenceDataUrl = gen.refGenId
+            ? task.generations.find(g => g.id === gen.refGenId)?.images?.[gen.refImageIndex ?? 0] || ''
+            : sourceDataUrl;
+        }
+        if (gen.refMode === 'source' && !referenceDataUrl) throw new Error('缺少首帧图片，请选择图片后生成视频。');
+        result = await generateVideoFlowKit(settings, {
           prompt: gen.prompt,
-          imageDataUrl: gen.refMode === 'source' ? charDataUrl || sourceDataUrl : '',
+          referenceDataUrl,
+          aspectRatio: gen.aspectRatio,
           duration: gen.duration || settings.videoDuration,
-          onTaskSubmitted: rememberRemoteTask
-        },
-        settings
-      );
+          sceneId: `${taskId}:${genId}`,
+          onTaskCreated: async (descriptor) => {
+            await chrome.storage.local.set({ [receiptKey]: descriptor });
+            await updateGen(taskId, genId, (g) => {
+              g.remoteTaskId = descriptor;
+              g.flowkitNoResubmit = true;
+            });
+            await syncResumeAlarm();
+          }
+        });
+      }
     } else if (gen.provider === 'openai') {
       if (!settings.openaiApiKey) {
         throw new Error('未配置 GPT-Image 渠道的 API Key。请到设置页填写。');
@@ -270,16 +290,30 @@ async function executeGeneration(taskId, genId) {
       g.images = images;
       g.videos = videos;
       g.status = 'done';
+      if (gen.kind === 'video') {
+        g.error = null;
+        if (result.evidence) g.flowkitEvidence = result.evidence;
+      }
     });
   } catch (e) {
     // A pending APIMart task is not a failure: keep it running, the resume
     // alarm keeps polling even if this service worker instance dies.
-    if (!e?.pending) {
+    if (gen.kind === 'video') {
+      await updateGen(taskId, genId, (g) => {
+        g.status = e?.pending ? 'running' : 'error';
+        g.error = String(e?.message || e);
+        if (e?.noResubmit) g.flowkitNoResubmit = true;
+        if (e?.descriptor) g.remoteTaskId = e.descriptor;
+        if (e?.evidence) g.flowkitEvidence = e.evidence;
+      });
+    } else if (!e?.pending) {
       await updateGen(taskId, genId, (g) => {
         g.status = 'error';
         g.error = friendlyGenError(e);
       });
     }
+  } finally {
+    if (gen.kind === 'video') activePolls.delete(genId);
   }
   await syncResumeAlarm();
 }
@@ -314,6 +348,14 @@ async function startGeneration({
 }
 
 async function retryGeneration({ taskId, genId, provider = '' }) {
+  const existing = (await getTasks())[taskId]?.generations.find((g) => g.id === genId);
+  if (existing?.kind === 'video') {
+    if (existing.provider !== 'flowkit' || activePolls.has(genId) || existing.status === 'done') return;
+    // A submitted video can only query its original descriptor, never generate again.
+    await updateGen(taskId, genId, (g) => { g.status = 'running'; g.error = null; });
+    await executeGeneration(taskId, genId);
+    return;
+  }
   await updateGen(taskId, genId, (g) => {
     g.status = 'running';
     g.error = null;
@@ -371,7 +413,7 @@ async function startCompareGeneration({
   return gens.length;
 }
 
-async function startVideoGeneration({ taskId, prompt, duration, withImage = false, refGenId = '' }) {
+async function startVideoGeneration({ taskId, prompt, duration, aspectRatio = '16:9', withImage = false, refGenId = '', refImageIndex = 0 }) {
   const tasks = await getTasks();
   const task = tasks[taskId];
   if (!task) throw new Error('任务不存在');
@@ -380,12 +422,13 @@ async function startVideoGeneration({ taskId, prompt, duration, withImage = fals
   const gen = makeGenRecord({
     kind: 'video',
     prompt,
-    aspectRatio: '',
-    imageSize: '',
+    aspectRatio,
+    imageSize: '720p',
     refMode: withImage ? 'source' : 'none',
-    provider: 'flowagent',
+    provider: 'flowkit',
     duration: Number(duration) || settings.videoDuration,
-    refGenId: withImage ? refGenId : ''
+    refGenId: withImage ? refGenId : '',
+    refImageIndex: withImage ? refImageIndex : 0
   });
   task.generations.unshift(gen);
   await saveTask(task);
@@ -573,7 +616,7 @@ async function regeneratePostCopy({ taskId, setId }) {
 }
 
 // ---- Recovery for in-flight remote tasks across service worker restarts ----
-// APIMart / Atlas / FlowAgent persist a remote task id on the
+// APIMart / Atlas / FlowKit persist a remote task id or polling descriptor on the
 // gen record, so their polls can be resumed by the alarm below.
 
 const activePolls = new Set();
@@ -584,7 +627,7 @@ function remoteTaskIdOf(gen) {
 
 /** Pick the poll function matching the provider of a resumable gen. */
 function pollerFor(gen) {
-  if (gen.kind === 'video') return pollFlowVideoJob;
+  if (gen.kind === 'video') return (descriptor, settings) => resumeFlowKitVideo(settings, descriptor);
   if (gen.provider === 'seedream') return pollAtlasPrediction;
   return pollApimartTask;
 }
@@ -592,7 +635,10 @@ function pollerFor(gen) {
 async function syncResumeAlarm() {
   const tasks = await getTasks();
   const hasPending = Object.values(tasks).some((t) =>
-    t.generations.some((g) => g.status === 'running' && g.provider !== 'comfy' && remoteTaskIdOf(g))
+    t.generations.some((g) => g.status === 'running' && g.provider !== 'comfy' &&
+      (g.kind === 'video'
+        ? g.provider === 'flowkit' && (g.flowkitNoResubmit || remoteTaskIdOf(g))
+        : remoteTaskIdOf(g)))
   );
   if (hasPending) {
     chrome.alarms.create('plens-resume', { periodInMinutes: 0.5 });
@@ -607,23 +653,58 @@ async function resumePendingGenerations() {
   for (const task of Object.values(tasks)) {
     for (const gen of task.generations) {
       if (gen.status !== 'running' || gen.provider === 'comfy') continue;
+      if (gen.kind === 'video') {
+        if (activePolls.has(gen.id)) continue;
+        if (gen.provider !== 'flowkit') {
+          await updateGen(task.id, gen.id, (g) => {
+            g.status = 'error';
+            g.error = '旧视频渠道已停用；历史结果和任务标识已保留，请另建 FlowKit 视频任务。';
+          });
+          continue;
+        }
+        const receiptKey = `flowkitVideo:${gen.id}`;
+        const receipt = (await chrome.storage.local.get(receiptKey))[receiptKey];
+        if (receipt) {
+          gen.remoteTaskId = receipt;
+          gen.flowkitNoResubmit = true;
+        }
+        if (!canResumeFlowKitVideo(gen.remoteTaskId)) {
+          // A fresh queued record can be visible before its executor starts.
+          if (!gen.flowkitNoResubmit && !gen.remoteTaskId && Date.now() - gen.createdAt < 10 * 60 * 1000) continue;
+          await updateGen(task.id, gen.id, (g) => {
+            g.status = 'error';
+            g.flowkitNoResubmit = true;
+            g.error = '视频执行中断，未取得可查询标识，结果不明（uncertain）。请核实 FlowKit 后台，禁止自动重提。';
+          });
+          continue;
+        }
+      }
       const remoteId = remoteTaskIdOf(gen);
       if (remoteId) {
         if (activePolls.has(gen.id)) continue;
         activePolls.add(gen.id);
         pollerFor(gen)(remoteId, settings)
-          .then(({ images = [], videos = [] }) =>
+          .then(({ images = [], videos = [], evidence }) =>
             updateGen(task.id, gen.id, (g) => {
               g.images = images;
               g.videos = videos;
               g.status = 'done';
+              if (gen.kind === 'video') {
+                g.error = null;
+                if (evidence) g.flowkitEvidence = evidence;
+              }
             })
           )
           .catch((e) => {
-            if (e?.pending) return; // alarm will re-enter later
+            if (e?.pending && gen.kind !== 'video') return; // alarm will re-enter later
             return updateGen(task.id, gen.id, (g) => {
-              g.status = 'error';
+              g.status = e?.pending ? 'running' : 'error';
               g.error = String(e?.message || e);
+              if (gen.kind === 'video') {
+                g.flowkitNoResubmit = true;
+                if (e?.descriptor) g.remoteTaskId = e.descriptor;
+                if (e?.evidence) g.flowkitEvidence = e.evidence;
+              }
             });
           })
           .finally(() => {
@@ -648,29 +729,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'plens-resume') resumePendingGenerations();
 });
 
-// Keep the FlowAgent Origin workaround; retire the old ComfyUI rule 101.
-const DNR_RULE_FLOW = 102;
-
+// Retire obsolete local bridge Origin overrides; FlowKit uses its own API.
 async function syncLocalOriginRules() {
-  const settings = await getSettings();
-  const rules = [
-    { id: DNR_RULE_FLOW, base: settings.flowagentBaseUrl || 'http://127.0.0.1:8001' }
-  ].map(({ id, base }) => ({
-    id,
-    priority: 1,
-    action: {
-      type: 'modifyHeaders',
-      requestHeaders: [{ header: 'Origin', operation: 'remove' }]
-    },
-    condition: {
-      urlFilter: base.replace(/\/+$/, '') + '/',
-      resourceTypes: ['xmlhttprequest']
-    }
-  }));
   try {
     await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [101, ...rules.map((r) => r.id)],
-      addRules: rules
+      removeRuleIds: [101, 102],
+      addRules: []
     });
   } catch (e) {
     console.error('sync local origin rules failed:', e);
@@ -678,11 +742,6 @@ async function syncLocalOriginRules() {
 }
 
 syncLocalOriginRules();
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.flowagentBaseUrl) {
-    syncLocalOriginRules();
-  }
-});
 
 // Runs on every service worker start-up (including after Chrome reclaims it).
 resumePendingGenerations();

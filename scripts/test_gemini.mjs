@@ -685,82 +685,9 @@ if (atlasSize('3:4', '2K') !== '1728*2304') throw new Error('v4 size mapping reg
 if (atlasModelFor(V5, true) !== 'bytedance/seedream-v5.0-pro/edit') throw new Error('v5 edit variant broken');
 console.log('--- seedream 5 size mapping ok');
 
-// 12. FlowAgent video: submit -> job id -> poll -> download mp4
-const { generateVideoFlow, pollFlowVideoJob } = await import('../lib/flowagent.js');
-
-const flowSettings = { flowagentBaseUrl: 'http://127.0.0.1:8001', pollIntervalMs: 1 };
-let flowPollCount = 0;
-let flowSubmitBody = null;
-globalThis.fetch = async (url, opts = {}) => {
-  if (url.endsWith('/v1/videos/generations') && opts.method === 'POST') {
-    flowSubmitBody = JSON.parse(opts.body);
-    return { ok: true, status: 200, json: async () => ({ id: 'job_1', status: 'queued' }) };
-  }
-  if (url.includes('/v1/videos/generations/job_1')) {
-    flowPollCount++;
-    if (flowPollCount < 2) return { ok: true, status: 200, json: async () => ({ id: 'job_1', status: 'processing' }) };
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ id: 'job_1', status: 'succeeded', video_url: '/download/out.mp4' })
-    };
-  }
-  if (url.includes('/download/out.mp4')) {
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => 'video/mp4' },
-      arrayBuffer: async () => new TextEncoder().encode('vid').buffer
-    };
-  }
-  throw new Error('unexpected flow url: ' + url);
-};
-let flowSubmittedId = '';
-const flowRes = await generateVideoFlow(
-  {
-    prompt: 'a cinematic shot',
-    imageDataUrl: fakeDataUrl,
-    duration: 8,
-    onTaskSubmitted: (id) => {
-      flowSubmittedId = id;
-    }
-  },
-  flowSettings
-);
-console.log(
-  '--- flow submit duration:',
-  flowSubmitBody.duration,
-  '| has image:',
-  !!flowSubmitBody.image,
-  '| polls:',
-  flowPollCount,
-  '| videos:',
-  flowRes.videos.length
-);
-if (flowSubmittedId !== 'job_1' || !flowRes.videos[0].startsWith('data:video/mp4')) throw new Error('flow video broken');
-
-// failed job surfaces error
-globalThis.fetch = async (url, opts = {}) => {
-  if (opts.method === 'POST') return { ok: true, status: 200, json: async () => ({ id: 'job_2' }) };
-  return { ok: true, status: 200, json: async () => ({ id: 'job_2', status: 'failed', error: 'credits 不足' }) };
-};
-try {
-  await generateVideoFlow({ prompt: 'p' }, flowSettings);
-  throw new Error('should have thrown');
-} catch (e) {
-  console.log('--- flow failed-job error surfaced:', e.message);
-  if (!e.message.includes('credits')) throw e;
-}
-
-// pending timeout keeps e.pending
-globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ status: 'processing' }) });
-try {
-  await pollFlowVideoJob('job_3', flowSettings, { deadlineMs: 5 });
-  throw new Error('should have thrown pending');
-} catch (e) {
-  console.log('--- flow pending timeout, e.pending =', e.pending === true);
-  if (e.pending !== true) throw e;
-}
+// 12. FlowKit video: offline client contract and no-replay checks.
+await import('./test_flowkit.mjs');
+await import('./test_flowkit_background.mjs');
 
 await import('./test_grok.mjs');
 await import('./test_atlas.mjs');

@@ -9,7 +9,7 @@ const PROVIDER_LABELS = {
   seedream: 'Seedream',
   comfy: 'ComfyUI（已停用）',
   grok: 'Grok',
-  flowagent: 'FlowAgent 视频'
+  flowkit: 'FlowKit 视频'
 };
 const REF_MODE_LABELS = { pose: '姿势复刻', style: '风格参考', none: '', source: '图生视频' };
 const STATUS_TEXT = {
@@ -106,7 +106,7 @@ function render() {
     task.id,
     task.status,
     task.error,
-    task.generations.map((g) => [g.id, g.status]),
+    task.generations.map((g) => [g.id, g.status, g.error, g.flowkitNoResubmit, !!g.remoteTaskId]),
     Object.entries(task.postCopies || {}).map(([id, c]) => [id, c.status])
   ]);
   if (task.id === renderedTaskId && stamp === renderedStamp) return;
@@ -190,7 +190,7 @@ function groupGenerations(task) {
 }
 
 function genKindBadge(gen) {
-  if (gen.kind === 'video') return PROVIDER_LABELS.flowagent;
+  if (gen.kind === 'video') return gen.provider === 'flowkit' ? PROVIDER_LABELS.flowkit : '历史视频';
   return PROVIDER_LABELS[gen.provider] || gen.provider;
 }
 
@@ -349,31 +349,42 @@ function renderCell(task, gen) {
   name.textContent = gen.setLabel ? `${gen.setIndex}. ${gen.setLabel}` : genKindBadge(gen);
   const status = document.createElement('span');
   status.className = 'cell-status ' + gen.status;
-  status.textContent = gen.status === 'running' ? '生成中…' : gen.status === 'error' ? '失败' : '完成';
+  status.textContent = gen.status === 'running' ? '生成中…' : gen.status === 'uncertain' ? '结果待核实' : gen.status === 'error' ? '失败' : '完成';
   label.append(name, status);
   cell.appendChild(label);
 
   if (gen.status === 'running') {
     const ph = document.createElement('div');
     ph.className = 'cell-placeholder running';
-    ph.textContent = gen.kind === 'video' ? '视频生成中，通常需要 1-3 分钟…' : '生成中…';
+    ph.textContent = gen.kind === 'video' ? '视频处理中，请等待原任务结果…' : '生成中…';
     cell.appendChild(ph);
-  } else if (gen.status === 'error') {
+  } else if (gen.status === 'error' || gen.status === 'uncertain') {
     const err = document.createElement('div');
     err.className = 'error cell-error';
     err.textContent = gen.error || '生成失败';
     cell.appendChild(err);
-    const retry = document.createElement('button');
-    retry.className = 'chip-btn';
-    retry.textContent = gen.provider === 'comfy' ? '用 Grok 重试' : '重试';
-    retry.addEventListener('click', () => {
-      retry.disabled = true;
-      chrome.runtime.sendMessage({
-        type: 'RETRY_GEN',
-        payload: { taskId: task.id, genId: gen.id, provider: gen.provider === 'comfy' ? 'grok' : gen.provider }
+    // Historical video records remain viewable; only the current channel can run.
+    if (gen.kind !== 'video' || gen.provider === 'flowkit') {
+      const remote = gen.remoteTaskId;
+      const canQuery = gen.provider === 'flowkit' && !!(remote?.operations?.length || remote?.workflows?.length || remote?.flowkitPolling?.workflows?.length);
+      const cannotResubmit = gen.provider === 'flowkit' && (gen.flowkitNoResubmit || gen.status === 'uncertain' || !!remote);
+      const retry = document.createElement('button');
+      retry.className = 'chip-btn';
+      retry.textContent = canQuery ? '查询原任务' : cannotResubmit ? '待核实结果' : gen.provider === 'comfy' ? '用 Grok 重试' : '重试';
+      retry.disabled = cannotResubmit && !canQuery;
+      retry.addEventListener('click', async () => {
+        retry.disabled = true;
+        const res = await sendToBackground({
+          type: 'RETRY_GEN',
+          payload: { taskId: task.id, genId: gen.id, provider: gen.provider === 'comfy' ? 'grok' : gen.provider }
+        });
+        if (res && !res.ok) {
+          err.textContent = res.error;
+          retry.disabled = cannotResubmit && !canQuery;
+        }
       });
-    });
-    cell.appendChild(retry);
+      cell.appendChild(retry);
+    }
   }
 
   (gen.videos || []).forEach((dataUrl, i) => {
@@ -393,7 +404,14 @@ function renderCell(task, gen) {
     img.title = '点击查看大图';
     img.addEventListener('click', () => openViewer(task.id, { g: gen.id, i: String(i) }));
     cell.appendChild(img);
-    cell.appendChild(makeDownloadRow(dataUrl, `prompt-lens-${gen.id}${gen.images.length > 1 ? '-' + (i + 1) : ''}.png`));
+    const actions = makeDownloadRow(dataUrl, `prompt-lens-${gen.id}${gen.images.length > 1 ? '-' + (i + 1) : ''}.png`);
+    const videoBtn = document.createElement('button');
+    videoBtn.className = 'chip-btn';
+    videoBtn.textContent = '带图生成视频（8 秒）';
+    videoBtn.title = '以这张图为首帧，使用视频提示词（留空则使用该图提示词）和视频画幅';
+    videoBtn.addEventListener('click', () => generateVideo({ task, referenceGeneration: gen, referenceImageIndex: i, button: videoBtn }));
+    actions.appendChild(videoBtn);
+    cell.appendChild(actions);
   });
 
   return cell;
@@ -504,16 +522,20 @@ async function generateSet() {
   }
 }
 
-async function generateVideo() {
+async function generateVideo({ task = activeTask(), referenceGeneration = null, referenceImageIndex = 0, button = $('btn-generate-video') } = {}) {
   showError('video-error', '');
-  const task = activeTask();
   if (!task) return;
-  const prompt = $('video-prompt').value.trim() || $('prompt-en').value.trim();
+  const prompt = $('video-prompt').value.trim() || referenceGeneration?.prompt?.trim() || $('prompt-en').value.trim();
   if (!prompt) {
     showError('video-error', '视频提示词为空');
     return;
   }
-  const btn = $('btn-generate-video');
+  const withImage = !!referenceGeneration || $('video-with-image').checked;
+  if (withImage && !(referenceGeneration ? referenceGeneration.images?.[referenceImageIndex] : task.source?.dataUrl)) {
+    showError('video-error', '缺少首帧图片，请选择图片后生成视频。');
+    return;
+  }
+  const btn = button;
   btn.disabled = true;
   try {
     const res = await sendToBackground({
@@ -521,8 +543,11 @@ async function generateVideo() {
       payload: {
         taskId: task.id,
         prompt,
-        duration: Number($('video-duration').value),
-        withImage: $('video-with-image').checked
+        aspectRatio: $('video-aspect').value,
+        duration: withImage ? 8 : Number($('video-duration').value),
+        withImage,
+        refGenId: referenceGeneration?.id || '',
+        refImageIndex: referenceImageIndex
       }
     });
     if (res && !res.ok) showError('video-error', res.error);
@@ -537,7 +562,20 @@ async function init() {
   const settings = await getSettings();
   $('gen-aspect').value = settings.aspectRatio;
   $('gen-size').value = settings.imageSize;
-  $('video-duration').value = String(settings.videoDuration || 8);
+  const videoDuration = $('video-duration');
+  let textVideoDuration = String([4, 6, 8, 10].includes(Number(settings.videoDuration)) ? settings.videoDuration : 8);
+  const updateVideoMode = () => {
+    const withImage = $('video-with-image').checked;
+    videoDuration.value = withImage ? '8' : textVideoDuration;
+    videoDuration.disabled = withImage;
+    $('video-mode-hint').textContent = withImage
+      ? '首帧图生视频固定 8 秒，输出 720p。'
+      : '文生视频支持 4、6、8、10 秒，输出 720p；带图生成视频固定 8 秒。';
+  };
+  videoDuration.addEventListener('change', () => { textVideoDuration = videoDuration.value; });
+  $('video-with-image').addEventListener('change', updateVideoMode);
+  $('video-aspect').value = ['9:16', '3:4', '4:5'].includes(settings.aspectRatio) ? '9:16' : '16:9';
+  updateVideoMode();
   const checkedDefault = document.querySelector(`.prov[value="${settings.imageProvider}"]`);
   if (checkedDefault) checkedDefault.checked = true;
 

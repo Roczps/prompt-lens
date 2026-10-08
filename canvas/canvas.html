@@ -138,9 +138,15 @@
         </div>
 
         <div class="card">
-          <div class="card-head"><h2>FlowAgent 视频</h2></div>
+          <div class="card-head"><h2>FlowKit 视频</h2></div>
           <textarea id="video-prompt" rows="3" spellcheck="false" placeholder="视频提示词（留空则使用左侧图片提示词）"></textarea>
           <div class="gen-controls">
+            <label>视频画幅
+              <select id="video-aspect">
+                <option value="16:9">16:9 横屏</option>
+                <option value="9:16">9:16 竖屏</option>
+              </select>
+            </label>
             <label>时长
               <select id="video-duration">
                 <option value="4">4 秒</option>
@@ -150,10 +156,11 @@
               </select>
             </label>
             <label class="check with-image-check">
-              <input type="checkbox" id="video-with-image" checked />
-              以当前图为参考（图生视频）
+              <input type="checkbox" id="video-with-image" />
+              以当前原图为首帧
             </label>
           </div>
+          <p id="video-mode-hint" class="hint-line dim">文生视频支持 4、6、8、10 秒，输出 720p；带图生成视频固定 8 秒。</p>
           <button id="btn-generate-video" class="primary">生成视频</button>
           <div id="video-error" class="error hidden"></div>
         </div>

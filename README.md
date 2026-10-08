@@ -10,7 +10,7 @@
 - **中英双语提示词**：英文提示词可直接编辑后送去生图，附中文对照
 - **四生图渠道**：Gemini、GPT-Image（APIMart / OpenAI）、Seedream（Atlas Cloud）、Grok（grok2api，支持文生图及参考图编辑）。ComfyUI 暂停使用，历史图片和旧配置保留。
 - **画布工作台**：侧边栏保持快速反推定位，点顶栏画布按钮在新标签页打开全屏工作台——左栏源图与提示词编辑，右侧勾选多个渠道后同一提示词并行发给所有渠道，结果按批次排成对比网格，每格独立重试/下载
-- **FlowAgent 视频**：接入本机 FlowAgent 服务（Google Flow 桥接，OpenAI 兼容接口），在画布中文生视频或以当前图为参考图生视频（4/6/8/10 秒），结果卡片内嵌播放器，可下载 mp4
+- **FlowKit 视频**：Omni Flash 文生视频（4/6/8/10 秒、720p）及 Veo 3.1 Lite 首帧图生视频（固定 8 秒、720p），支持查询、播放和下载。画布与侧栏可从原图或指定成图发起图生视频。目前仅通过离线验证，尚未实机验收。
 - **侧边栏生图**：选择画幅（1:1 到 21:9）与分辨率（512 / 1K / 2K / 4K，自动映射为各渠道支持的尺寸）
 - **姿势复刻**：生成时把原图作为姿态与构图约束送入模型，锁定人物姿势、裁切与画面占比（也可切换为风格参考 / 纯提示词）
 - **角色卡替换**：从反推图或上传图保存角色卡（自动识别外貌特征），生成时选择角色卡即可把画面人物替换为该角色
@@ -18,7 +18,16 @@
 - **组图配套文案（爆款方法论）**：组图生成的同时自动写好发布文案，指令内置各平台爆款打法——小红书：五选一标题公式（数字清单/痛点提问/反差反常识/结果前置/身份+场景+结果）+「信任建立→价值传递→行动引导」三段种草正文（含真实感小缺点与互动钩子）+ 核心词/长尾词/泛流量词三层话题标签；Instagram：125 字符截断线内的 hook 首行 + 个人视角 caption + save/comment CTA + 大流量/精准/社群三层 hashtags。分镜策划同步注入平台规则：小红书封面强制真人出镜、主体突出、顶部 15% 留白，Instagram 按 carousel 叙事弧（hook→细节→场景→变化→CTA 收尾）编排。文案可一键复制、不满意可重新生成
 - **内容预设库**：内置 8 个从优质提示词库蒸馏的组图预设（咖啡探店 plog、OOTD 街拍、居家氛围感、旅行 plog、Clean Girl 极简、Editorial 杂志街拍、胶片 Film Look、运动 Lifestyle），每个预设带英文风格锚、分镜节奏与平台规则（小红书封面自动留标题空位），并自动追加防水印/防乱码/防坏手负面词
 - **历史记录**：本地保留最近 50 个任务，可随时回看、重新生成；点击任意图片在新标签页查看大图并下载
-- **断点续传**：APIMart / Atlas Cloud / FlowAgent 持久化远程任务号并恢复轮询。Grok 为同步请求，不支持远程任务恢复；超时或断网不会自动重发，请先检查服务端结果。旧 ComfyUI 任务保留，但不再自动轮询。
+- **断点续传**：APIMart / Atlas Cloud 持久化远程任务号；FlowKit 保存原始轮询句柄，文生视频保留账号、项目，图生视频由服务端恢复原 operation 归属。上传或提交结果不明（`uncertain`）、超时或断网不自动重传或重新生成。Grok 为同步请求，不支持远程任务恢复。旧视频与 ComfyUI 任务保留，旧远程视频任务不会交给 FlowKit 查询或重新提交。
+
+## v1.9.0：本机 FlowKit 文生视频与首帧图生视频
+
+- 视频设置改为 FlowKit 地址，默认 `http://127.0.0.1:8111`，无需 API Key、Google Cookie 或 Flow Key。旧视频服务的地址、模型和 Key 设置不参与新请求，已有视频资产继续保留。
+- 设置页连通测试与生成前预检依次读取 `/health`、`/api/flow/status`、`/api/slots`；要求插件已连接、`transport=batch`，并有在线、未阻断、有空槽且连接与项目齐全的账号。文生视频将该账号的 `connection_id` 和 `project_id` 成对传入。连通测试不消耗生成额度，也不证明视频生成成功。
+- 文生视频走 `/api/flow/generate-video-omni-text`，原任务查询走 `/api/flow/check-status`，保留提交响应中的 `operations` 或 `flowkitPolling.workflows`。提交前另存独立的 `flowkitVideo:<genId>` 回执；即使任务列表被并发旧快照覆盖，重试仍读取该回执，禁止重新提交。`uncertain` 只保留证据，有查询句柄时查询原任务。
+- 首帧通过 `/api/flow/upload-image` 上传纯 `image_base64`、`mime_type`、`file_name` 和逻辑 `project_id`，读取顶层 `media_id`；随后向 `/api/flow/generate-video` 传 `start_image_media_id`，模型为 `veo_3_1_i2v_lite`。上传与 I2V 不指定 `connection_id`，由服务端按 `media_owner` 调度同一账号；轮询只传原始 `operations`，由服务端恢复原 operation 的归属。Veo 固定 8 秒，提交体与 Shotline 一致，不传 Omni 的可变时长/分辨率参数。
+- 上传前和视频提交前均保存独立 `flowkitVideo:<genId>` 回执，保留上传响应、媒体 ID、提交请求和原始轮询句柄。上传结果不明时不重传、不提交视频；上传已确认但流程中断且尚无 operation 时也保留回执待核对，不自动继续提交。已有 operation 只查询原任务，缺少所选首帧时明确报错。
+- 接口已静态对照 Shotline `shot-fallback.ts`、`preview-assets.ts`、`preview.ts` 和 FlowKit `agent/api/flow.py`、`agent/services/omni_flash.py`。Veo 完成字段为 `operations[].operation.metadata.video.fifeUrl`，Omni 为 `workflows[].media.url`；两者均通过 `/api/flow/check-status` 查询。横版来源于 Shotline，竖版枚举补充依据 `CALLING-GUIDE-20260929.md`。本次不启动服务、不发起真实生成；当前运行实例及最终下载的端到端验收仍待另行执行。
 
 ## v1.7.0：网页悬浮入口连接提示
 
@@ -68,9 +77,9 @@
 | 生成图片（GPT-Image 渠道） | `gpt-image-2` | 默认 APIMart 异步协议（提交任务 → 轮询 → 下载）；切到 OpenAI 官方时走同步 `generations`/`edits` 接口 |
 | 生成图片（Seedream 渠道） | `bytedance/seedream-v5.0-pro/text-to-image` | Atlas Cloud 异步协议（提交 → 轮询 prediction）；约 $0.045/张（1.5K 档，2K 满档 $0.09），edit 首张参考图免费、之后每张 +$0.003；Key 在 [Atlas Cloud 控制台](https://www.atlascloud.ai/console/api-keys) 创建 |
 | 生成图片（Grok 渠道） | `grok-imagine-image` / `grok-imagine-image-edit` | 默认 `http://127.0.0.1:8000/v1`，地址、Key、生成和编辑模型均可修改 |
-| 生成视频（FlowAgent） | 服务默认模型 | 连本机 `http://127.0.0.1:8001` 的 FlowAgent（Google Flow 桥接），无需 API Key |
+| 生成视频（FlowKit） | Omni Flash / Veo 3.1 Lite | 本机 `http://127.0.0.1:8111`，无需 API Key；支持文生视频和首帧图生视频；尚未实机验收 |
 
-模型都可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。
+生图模型可以在设置页修改。API Key 只保存在浏览器本地（`chrome.storage.sync`），请求直接发往对应官方 API（或你自己填的中转地址），不经过其他第三方服务器。FlowKit 视频只配置本机服务地址，不使用 Key。
 
 ## 项目结构
 
@@ -83,13 +92,13 @@ lib/
   atlas.js             Seedream 渠道封装（Atlas Cloud 提交/轮询 + v4/v5 尺寸预设）
   grok.js             Grok2API 文生图 / 参考图编辑（同步 OpenAI Images 接口）
   comfy.js            保留的旧适配器，当前产品不再调用
-  flowagent.js         FlowAgent 视频封装（提交/轮询/health 检查）
+  flowkit.js           FlowKit 视频封装（health/status/slots 预检、首帧上传、提交及原任务查询）
   presets.js           组图内容预设库（风格锚 + 分镜节奏 + 平台规则）
   settings.js          设置读写与默认值
   util.js              图片抓取、缩略图、base64 工具
 content/               网页内容脚本（悬浮球 + toast）
 sidepanel/             侧边栏：快速反推、生图、历史
-canvas/                画布工作台：多模型对比生图 + FlowAgent 视频
+canvas/                画布工作台：多模型对比生图 + FlowKit 视频
 popup/                 插件弹窗：上传/粘贴图片入口
 options/               设置页（五渠道配置与连通测试）
 viewer/                大图查看页

@@ -117,24 +117,20 @@
     </section>
 
     <section class="card">
-      <h2>FlowAgent 视频（可选）</h2>
+      <h2>FlowKit 视频（可选）</h2>
       <div class="row">
         <label>
-          服务地址
+          FlowKit 地址
           <div class="key-row">
-            <input type="text" id="flowagentBaseUrl" placeholder="http://127.0.0.1:8001" />
+            <input type="text" id="flowkitBaseUrl" placeholder="http://127.0.0.1:8111" />
             <button id="btn-test-flow" class="chip-btn">测试</button>
           </div>
-          <span class="hint">本机运行的 FlowAgent（Google Flow 桥接）服务</span>
+          <span class="hint">仅连接本机 FlowKit，无需 Key。测试只检查服务和可用账号，不会生成视频。</span>
           <span id="test-flow-result" class="hint"></span>
-        </label>
-        <label>
-          视频模型（可选）
-          <input type="text" id="flowagentModel" placeholder="留空用服务默认模型" />
         </label>
       </div>
       <label>
-        默认视频时长
+        默认文生视频时长（图生视频固定 8 秒）
         <select id="videoDuration">
           <option value="4">4 秒</option>
           <option value="6">6 秒</option>

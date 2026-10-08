@@ -44,7 +44,7 @@ const PROVIDER_LABELS = {
   seedream: 'Seedream',
   comfy: 'ComfyUI（已停用）',
   grok: 'Grok',
-  flowagent: 'FlowAgent 视频'
+  flowkit: 'FlowKit 视频'
 };
 
 async function loadState() {
@@ -85,12 +85,13 @@ function render() {
 
   // Avoid clobbering the prompt textarea while the user edits it: only
   // re-render task details when the task actually changed.
-  const stamp = JSON.stringify([task.id, task.status, task.error, task.generations.map((g) => [g.id, g.status])]);
+  const stamp = JSON.stringify([task.id, task.status, task.error, task.generations.map((g) => [g.id, g.status, g.error, g.flowkitNoResubmit, !!g.remoteTaskId])]);
   if (task.id === renderedTaskId && stamp === renderedStamp) return;
   renderedTaskId = task.id;
   renderedStamp = stamp;
 
   $('source-img').src = task.source?.dataUrl || '';
+  $('btn-source-video').disabled = !task.source?.dataUrl || !task.result;
   const statusEl = $('task-status');
   statusEl.textContent = STATUS_TEXT[task.status] || task.status;
   statusEl.classList.toggle('running', task.status === 'fetching' || task.status === 'analyzing');
@@ -200,30 +201,46 @@ function renderGenerations(task) {
 
     const meta = document.createElement('div');
     meta.className = 'gen-meta';
-    const statusText = gen.status === 'running' ? '生成中…' : gen.status === 'error' ? '失败' : '完成';
+    const statusText = gen.status === 'running' ? '生成中…' : gen.status === 'uncertain' ? '结果待核实' : gen.status === 'error' ? '失败' : '完成';
     const setText = gen.setId ? `组图 ${gen.setIndex}/${gen.setTotal} · ${gen.setLabel}` : '';
-    const modeText = [setText, gen.aspectRatio + ' · ' + gen.imageSize, PROVIDER_LABELS[gen.provider] || '', REF_MODE_LABELS[gen.refMode] || '', gen.characterName || '']
+    const providerText = gen.kind === 'video' && gen.provider !== 'flowkit' ? '历史视频' : PROVIDER_LABELS[gen.provider] || '';
+    const modeText = [setText, gen.aspectRatio + ' · ' + gen.imageSize, providerText, REF_MODE_LABELS[gen.refMode] || '', gen.characterName || '']
       .filter(Boolean)
       .join(' · ');
     meta.innerHTML = `<span>${modeText}</span><span>${statusText} · ${fmtTime(gen.createdAt)}</span>`;
     item.appendChild(meta);
 
-    if (gen.status === 'error') {
+    if (gen.status === 'error' || gen.status === 'uncertain') {
       const err = document.createElement('div');
       err.className = 'error';
       err.textContent = gen.error || '生成失败';
       item.appendChild(err);
-      const retry = document.createElement('button');
-      retry.className = 'chip-btn retry-btn';
-      retry.textContent = '重试这张（用当前渠道）';
-      retry.addEventListener('click', () => {
-        retry.disabled = true;
-        chrome.runtime.sendMessage({
-          type: 'RETRY_GEN',
-          payload: { taskId: task.id, genId: gen.id, provider: $('gen-provider').value }
+      if (gen.kind !== 'video' || gen.provider === 'flowkit') {
+        const remote = gen.remoteTaskId;
+        const canQuery = gen.provider === 'flowkit' && !!(remote?.operations?.length || remote?.workflows?.length || remote?.flowkitPolling?.workflows?.length);
+        const cannotResubmit = gen.provider === 'flowkit' && (gen.flowkitNoResubmit || gen.status === 'uncertain' || !!remote);
+        const retry = document.createElement('button');
+        retry.className = 'chip-btn retry-btn';
+        retry.textContent = canQuery ? '查询原任务' : cannotResubmit ? '待核实结果' : gen.kind === 'video' ? '重试视频' : '重试这张（用当前渠道）';
+        retry.disabled = cannotResubmit && !canQuery;
+        retry.addEventListener('click', async () => {
+          retry.disabled = true;
+          try {
+            const res = await chrome.runtime.sendMessage({
+              type: 'RETRY_GEN',
+              payload: { taskId: task.id, genId: gen.id, provider: gen.kind === 'video' ? gen.provider : $('gen-provider').value }
+            });
+            if (res && !res.ok) {
+              err.textContent = res.error;
+              retry.disabled = cannotResubmit && !canQuery;
+            }
+          } catch (e) {
+            err.textContent = e.message;
+            retry.disabled = cannotResubmit && !canQuery;
+          }
         });
-      });
-      item.appendChild(retry);
+        item.appendChild(retry);
+      }
     }
 
     (gen.videos || []).forEach((dataUrl, i) => {
@@ -275,12 +292,54 @@ function renderGenerations(task) {
         navigator.clipboard.writeText(gen.prompt);
         flashButton(cp);
       });
-      actions.append(dl, cp);
+      actions.append(dl, cp, makeImageVideoButton(() => task, gen, i));
       item.appendChild(actions);
     });
 
     box.appendChild(item);
   }
+}
+
+function makeImageVideoButton(getTask, referenceGeneration = null, referenceImageIndex = 0) {
+  const btn = document.createElement('button');
+  btn.className = 'chip-btn';
+  btn.textContent = '带图生成视频（8 秒）';
+  btn.title = '使用该图的英文提示词；视频输出 720p，画幅按图片设置映射为横屏或竖屏';
+  btn.addEventListener('click', async () => {
+    const task = getTask();
+    if (!task) return;
+    const error = document.createElement('div');
+    error.className = 'error';
+    const prompt = (referenceGeneration?.prompt || $('prompt-en').value || task.result?.prompt || '').trim();
+    if (!prompt) {
+      error.textContent = '视频提示词为空，请先填写英文提示词。';
+      btn.parentElement.appendChild(error);
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const imageAspect = referenceGeneration?.aspectRatio || $('gen-aspect').value;
+      const res = await chrome.runtime.sendMessage({
+        type: 'GENERATE_VIDEO',
+        payload: {
+          taskId: task.id,
+          prompt,
+          aspectRatio: ['9:16', '3:4', '4:5', '2:3'].includes(imageAspect) ? '9:16' : '16:9',
+          duration: 8,
+          withImage: true,
+          refGenId: referenceGeneration?.id || '',
+          refImageIndex: referenceImageIndex
+        }
+      });
+      if (!res?.ok) throw new Error(res?.error || '插件后台未响应，请刷新插件后重试。');
+    } catch (e) {
+      error.textContent = e.message;
+      btn.parentElement?.appendChild(error);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  return btn;
 }
 
 function renderHistory() {
@@ -420,6 +479,9 @@ function createCharacter(dataUrl) {
 }
 
 async function init() {
+  const sourceVideoButton = makeImageVideoButton(activeTask);
+  sourceVideoButton.id = 'btn-source-video';
+  $('source-link').parentElement.appendChild(sourceVideoButton);
   const settings = await getSettings();
   $('gen-aspect').value = settings.aspectRatio;
   $('gen-size').value = settings.imageSize;

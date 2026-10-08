@@ -3,7 +3,7 @@ import { testApiKey } from '../lib/gemini.js';
 import { testOpenAIKey } from '../lib/openai.js';
 import { testAtlasKey } from '../lib/atlas.js';
 import { testGrok } from '../lib/grok.js';
-import { testFlowAgent } from '../lib/flowagent.js';
+import { testFlowKit } from '../lib/flowkit.js';
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = [
@@ -21,8 +21,7 @@ const FIELDS = [
   'grokImageModel',
   'grokEditModel',
   'grokEditProtocol',
-  'flowagentBaseUrl',
-  'flowagentModel',
+  'flowkitBaseUrl',
   'videoDuration',
   'imageProvider',
   'aspectRatio',
@@ -47,7 +46,7 @@ async function save() {
     'grokBaseUrl',
     'grokImageModel',
     'grokEditModel',
-    'flowagentBaseUrl'
+    'flowkitBaseUrl'
   ];
   for (const f of FIELDS) {
     let v = $(f).value.trim();
@@ -104,9 +103,6 @@ $('btn-test-grok').addEventListener('click', () =>
   })
 );
 $('btn-test-flow').addEventListener('click', () =>
-  runTest('test-flow-result', async () => {
-    await testFlowAgent($('flowagentBaseUrl').value.trim());
-    return '连接成功，FlowAgent 服务在线';
-  })
+  runTest('test-flow-result', () => testFlowKit({ flowkitBaseUrl: $('flowkitBaseUrl').value.trim() }))
 );
 load();
